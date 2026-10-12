@@ -6,7 +6,10 @@ const PROTECTED_PREFIXES = [
   "/tasks",
   "/notes",
   "/mind-maps",
+  "/maps",
   "/projects",
+  "/favorites",
+  "/recent",
   "/search",
   "/settings",
 ];
@@ -69,14 +72,6 @@ export async function updateSessionAndGuardRoutes(
   });
 
   if (!isAuthConfigured()) {
-    if (isProtectedWorkspacePath(pathname)) {
-      const loginUrl = new URL("/login", request.url);
-      loginUrl.searchParams.set(
-        "next",
-        sanitizeRedirectPath(`${pathname}${search}`)
-      );
-      return NextResponse.redirect(loginUrl);
-    }
     return response;
   }
 

@@ -26,8 +26,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <AuthShell
-      title="Sign in to MindDesk"
-      subtitle="Access your tasks, rich-text notes, and connected mind maps."
+      title="Welcome back"
+      subtitle="Sign in to access your tasks, notes, and mind maps."
       footer={
         <span>
           Don&apos;t have an account?{" "}

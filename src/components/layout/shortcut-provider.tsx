@@ -42,6 +42,13 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      // Cmd/Ctrl + J -> Open Quick Capture (Lovable shortcut)
+      if (isMod && event.key.toLowerCase() === "j") {
+        event.preventDefault();
+        setQuickCaptureOpen(true);
+        return;
+      }
+
       // Alt + C -> Open Quick Capture (when not inside a text field)
       if (
         event.altKey &&

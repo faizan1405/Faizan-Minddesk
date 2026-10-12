@@ -2,41 +2,19 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
-import { Menu, PanelLeft, Plus, Search } from "lucide-react";
+import { Menu, Moon, PanelLeft, Plus, Search, Sun } from "lucide-react";
 import { useUIStore } from "@/stores/ui-store";
 import { Button } from "@/components/ui/button";
 import { SaveStatusBadge } from "@/components/layout/save-status-badge";
-import { ThemeToggle } from "@/components/layout/theme-toggle";
-
-const ROUTE_TITLES: Record<string, { title: string; subtitle: string }> = {
-  "/dashboard": {
-    title: "Dashboard",
-    subtitle: "Daily focus across tasks, notes, and mind maps",
-  },
-  "/tasks": {
-    title: "Tasks",
-    subtitle: "Fast, structured to-do lists & recurring schedules",
-  },
-  "/notes": {
-    title: "Notes",
-    subtitle: "Rich-text documents & connected knowledge",
-  },
-  "/mind-maps": {
-    title: "Mind Maps",
-    subtitle: "Visual idea mapping & linked concept graphs",
-  },
-  "/projects": {
-    title: "Projects",
-    subtitle: "Cross-domain organization for tasks, notes, and maps",
-  },
-  "/settings": {
-    title: "Settings",
-    subtitle: "Appearance, keyboard shortcuts, and data export",
-  },
-};
+import { useDeskData } from "@/features/minddesk/store";
+import {
+  pathnameToWorkspaceView,
+  workspaceTitles,
+} from "@/features/minddesk/workspace-types";
 
 export function AppHeader() {
   const pathname = usePathname() || "/dashboard";
+  const { data, update } = useDeskData();
   const toggleSidebar = useUIStore((state) => state.toggleSidebar);
   const setMobileNavOpen = useUIStore((state) => state.setMobileNavOpen);
   const setCommandPaletteOpen = useUIStore(
@@ -44,76 +22,88 @@ export function AppHeader() {
   );
   const setQuickCaptureOpen = useUIStore((state) => state.setQuickCaptureOpen);
 
-  const matchedKey =
-    Object.keys(ROUTE_TITLES).find(
-      (key) => pathname === key || pathname.startsWith(`${key}/`)
-    ) || "/dashboard";
-  const currentMeta = ROUTE_TITLES[matchedKey];
+  const view = pathnameToWorkspaceView(pathname);
 
   return (
-    <header className="sticky top-0 z-20 flex h-13 shrink-0 items-center justify-between border-b border-border bg-surface/90 px-4 backdrop-blur-md">
-      <div className="flex items-center gap-2.5">
-        {/* Mobile Drawer Trigger */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="lg:hidden"
-          onClick={() => setMobileNavOpen(true)}
-          aria-label="Open navigation menu"
-        >
-          <Menu className="h-4 w-4" />
-        </Button>
+    <header className="sticky top-0 z-20 flex h-[64px] shrink-0 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur sm:px-7">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="shrink-0 md:hidden"
+        aria-label="Open navigation"
+        onClick={() => setMobileNavOpen(true)}
+      >
+        <Menu />
+      </Button>
 
-        {/* Desktop Sidebar Collapse Trigger */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="hidden lg:inline-flex"
-          onClick={toggleSidebar}
-          aria-label="Toggle sidebar"
-          title="Toggle sidebar (Ctrl + \)"
-          data-testid="toggle-sidebar-button"
-        >
-          <PanelLeft className="h-4 w-4" />
-        </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="hidden md:inline-flex shrink-0"
+        onClick={toggleSidebar}
+        aria-label="Toggle sidebar"
+        title="Toggle sidebar (Ctrl + \)"
+        data-testid="toggle-sidebar-button"
+      >
+        <PanelLeft />
+      </Button>
 
-        {/* Breadcrumb / Route Heading */}
-        <div className="flex items-baseline gap-2.5">
-          <h1 className="text-sm font-semibold text-foreground">
-            {currentMeta.title}
-          </h1>
-          <span className="hidden text-xs text-foreground-muted md:inline">
-            {currentMeta.subtitle}
-          </span>
-        </div>
-      </div>
-
-      {/* Right Action Bar */}
-      <div className="flex items-center gap-2">
+      <div className="min-w-0 flex-1 flex items-center gap-3">
+        <h2 className="truncate text-sm font-semibold">
+          {workspaceTitles[view]}
+        </h2>
         <SaveStatusBadge />
-
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setCommandPaletteOpen(true)}
-          aria-label="Open search and command palette"
-          title="Search & Commands (Ctrl + K)"
-        >
-          <Search className="h-4 w-4" />
-        </Button>
-
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setQuickCaptureOpen(true)}
-          className="hidden sm:inline-flex"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          <span>Capture</span>
-        </Button>
-
-        <ThemeToggle />
       </div>
+
+      <Button
+        variant="outline"
+        size="sm"
+        className="hidden min-w-0 justify-start gap-2 text-muted-foreground sm:flex sm:w-56"
+        onClick={() => setCommandPaletteOpen(true)}
+      >
+        <Search className="size-4" />
+        <span className="min-w-0 flex-1 truncate text-left">
+          Search anything…
+        </span>
+        <span className="rounded border border-border px-1 text-[10px]">
+          ⌘ K
+        </span>
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="sm:hidden"
+        aria-label="Search"
+        onClick={() => setCommandPaletteOpen(true)}
+      >
+        <Search />
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Toggle light or dark theme"
+        title="Toggle appearance"
+        onClick={() =>
+          update((current) => ({
+            ...current,
+            theme: current.theme === "dark" ? "light" : "dark",
+          }))
+        }
+      >
+        {data.theme === "dark" ? <Sun /> : <Moon />}
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Quick capture"
+        title="Quick capture"
+        onClick={() => setQuickCaptureOpen(true)}
+      >
+        <Plus />
+      </Button>
     </header>
   );
 }

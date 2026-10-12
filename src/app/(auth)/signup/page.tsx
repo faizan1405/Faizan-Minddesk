@@ -26,8 +26,8 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
 
   return (
     <AuthShell
-      title="Create your workspace"
-      subtitle="Start organizing tasks, rich documents, and visual mind maps in one place."
+      title="Create your space"
+      subtitle="Start organizing tasks, rich notes, and visual mind maps in one calm place."
       footer={
         <span>
           Already have an account?{" "}

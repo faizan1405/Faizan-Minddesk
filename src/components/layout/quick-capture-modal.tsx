@@ -1,144 +1,178 @@
 "use client";
 
 import * as React from "react";
-import { CheckSquare, FileText, Info, Network, X } from "lucide-react";
-import { useUIStore } from "@/stores/ui-store";
+import { useRouter } from "next/navigation";
+import { FileText, ListTodo, Map, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { useDeskData } from "@/features/minddesk/store";
+import type { TaskItem } from "@/features/minddesk/types";
+import { useUIStore } from "@/stores/ui-store";
 
 type CaptureType = "task" | "note" | "map";
 
 export function QuickCaptureModal() {
+  const router = useRouter();
+  const { update, setSelectedItem } = useDeskData();
   const isOpen = useUIStore((state) => state.isQuickCaptureOpen);
   const setOpen = useUIStore((state) => state.setQuickCaptureOpen);
-  const [captureType, setCaptureType] = React.useState<CaptureType>("task");
-  const [title, setTitle] = React.useState("");
-  const [notice, setNotice] = React.useState<string | null>(null);
+  const [quickType, setQuickType] = React.useState<CaptureType>("task");
+  const [quickDraft, setQuickDraft] = React.useState("");
 
   if (!isOpen) {
     return null;
   }
 
   function handleClose() {
-    setNotice(null);
+    setQuickDraft("");
     setOpen(false);
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!title.trim()) return;
-    // Honest feedback: do not claim a database write has occurred in Phase 2
-    setNotice(
-      `Draft "${title.trim()}" staged in memory. Database persistence for ${captureType}s activates in Phases 3–5.`
-    );
-    setTitle("");
+  function createQuick(event: React.FormEvent) {
+    event.preventDefault();
+    const title = quickDraft.trim();
+    if (!title) return;
+
+    if (quickType === "task") {
+      const task: TaskItem = {
+        id: crypto.randomUUID(),
+        title,
+        note: "",
+        due: "Today",
+        priority: "medium",
+        complete: false,
+        starred: false,
+        projectId: "personal",
+        subtasks: [],
+      };
+      update((current) => ({ ...current, tasks: [task, ...current.tasks] }));
+      setSelectedItem(null);
+      handleClose();
+      router.push("/tasks");
+    } else if (quickType === "note") {
+      const id = crypto.randomUUID();
+      update((current) => ({
+        ...current,
+        notes: [
+          {
+            id,
+            title,
+            excerpt: "A new note, ready to unfold.",
+            content: `${title}\n\n`,
+            icon: "✎",
+            updated: "Just now",
+            projectId: "personal",
+            starred: false,
+          },
+          ...current.notes,
+        ],
+      }));
+      setSelectedItem(id);
+      handleClose();
+      router.push("/notes");
+    } else {
+      const id = crypto.randomUUID();
+      update((current) => ({
+        ...current,
+        maps: [
+          {
+            id,
+            title,
+            updated: "Just now",
+            starred: false,
+            nodes: [
+              {
+                id: "root",
+                position: { x: 250, y: 180 },
+                data: { label: title, color: "violet" },
+                type: "mind",
+              },
+              {
+                id: "idea",
+                position: { x: 560, y: 180 },
+                data: { label: "Add an idea", color: "mint" },
+                type: "mind",
+              },
+            ],
+            edges: [{ id: "root-idea", source: "root", target: "idea" }],
+          },
+          ...current.maps,
+        ],
+      }));
+      setSelectedItem(id);
+      handleClose();
+      router.push("/mind-maps");
+    }
   }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-[16vh] backdrop-blur-[2px] overscroll-contain"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 overscroll-contain"
       onClick={handleClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Quick Capture"
+      aria-label="Capture a thought"
       data-testid="quick-capture-dialog"
     >
       <div
-        className="w-full max-w-lg rounded-xl border border-border bg-surface p-4 shadow-2xl"
+        className="relative grid w-full max-w-lg gap-4 rounded-lg border border-border bg-background p-6 text-foreground shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setCaptureType("task")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                captureType === "task"
-                  ? "bg-domain-task/15 text-domain-task"
-                  : "text-foreground-muted hover:bg-surface-muted"
-              )}
-            >
-              <CheckSquare className="h-3.5 w-3.5" />
-              Task
-            </button>
-            <button
-              type="button"
-              onClick={() => setCaptureType("note")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                captureType === "note"
-                  ? "bg-domain-note/15 text-domain-note"
-                  : "text-foreground-muted hover:bg-surface-muted"
-              )}
-            >
-              <FileText className="h-3.5 w-3.5" />
-              Note
-            </button>
-            <button
-              type="button"
-              onClick={() => setCaptureType("map")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                captureType === "map"
-                  ? "bg-domain-map/15 text-domain-map"
-                  : "text-foreground-muted hover:bg-surface-muted"
-              )}
-            >
-              <Network className="h-3.5 w-3.5" />
-              Mind Map Node
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleClose}
-            aria-label="Close quick capture"
-            className="rounded p-1 text-foreground-muted hover:bg-surface-muted hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
+        <div className="flex flex-col space-y-1.5 text-center sm:text-left">
+          <h2 className="text-lg font-semibold leading-none tracking-tight">
+            Capture a thought
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Put it somewhere you can find it again.
+          </p>
         </div>
 
-        {notice && (
-          <div
-            role="status"
-            className="mb-3 flex items-start gap-2 rounded-lg border border-border bg-surface-muted/60 p-2.5 text-xs text-foreground-muted"
-          >
-            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-            <span>{notice}</span>
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={handleClose}
+          aria-label="Close quick capture"
+          className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100"
+        >
+          <X className="size-4" />
+        </button>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <input
-            autoFocus
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={
-              captureType === "task"
-                ? "What needs to be done?"
-                : captureType === "note"
-                  ? "Note title or quick thought..."
-                  : "Central idea or node concept..."
-            }
-            className="w-full rounded-md border border-border bg-surface-muted/50 px-3 py-2.5 text-sm text-foreground placeholder:text-foreground-muted focus:border-primary focus:outline-none"
-          />
-
-          <div className="flex items-center justify-end gap-2 pt-1">
+        <div className="grid grid-cols-3 gap-2">
+          {(["task", "note", "map"] as const).map((kind) => (
             <Button
+              key={kind}
               type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleClose}
+              variant={quickType === kind ? "secondary" : "outline"}
+              onClick={() => setQuickType(kind)}
             >
-              Close
+              {kind === "task" ? (
+                <ListTodo />
+              ) : kind === "note" ? (
+                <FileText />
+              ) : (
+                <Map />
+              )}
+              {kind === "task" ? "Task" : kind === "note" ? "Note" : "Mind map"}
             </Button>
-            <Button type="submit" size="sm" disabled={!title.trim()}>
-              Stage Draft
-            </Button>
-          </div>
+          ))}
+        </div>
+
+        <form className="flex gap-2" onSubmit={createQuick}>
+          <Input
+            autoFocus
+            aria-label={`${quickType} title`}
+            placeholder={
+              quickType === "task"
+                ? "What needs doing?"
+                : quickType === "note"
+                  ? "Give this note a name…"
+                  : "What are you exploring?"
+            }
+            value={quickDraft}
+            onChange={(event) => setQuickDraft(event.target.value)}
+          />
+          <Button type="submit" disabled={!quickDraft.trim()}>
+            <Plus /> Create
+          </Button>
         </form>
       </div>
     </div>
