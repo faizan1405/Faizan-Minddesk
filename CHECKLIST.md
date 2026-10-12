@@ -1,0 +1,68 @@
+# MindDesk — Development & Verification Checklist
+
+> **Rule:** Never mark a phase or feature complete without running automated tests, typechecks, and build verification.
+
+## Planning & Architecture
+- [x] Inspect current workspace (`e:\Work\Faizan\Faizan Document website`)
+- [x] Prepare complete system architecture & implementation plan
+- [x] Define modular folder structure and App Router routes
+- [x] Define PostgreSQL schema, relationships, indexes, and RLS policies
+- [x] Define UI/UX design system (tokens, typography, layout, shortcuts)
+- [x] Define 8 testable phases with acceptance criteria and test cases
+- [x] Document technical risks and concrete mitigation strategies
+- [x] Create project `README.md` and `CHECKLIST.md`
+
+---
+
+## Phase 1: Project Foundation, Design System & Core App Shell
+- [x] Initialize Next.js (App Router, TypeScript), Tailwind CSS, `shadcn/ui`, `next-themes`, and Zustand
+- [x] Configure design tokens (Light/Dark theme variables, typography, border & surface colors)
+- [x] Build responsive `AppShell` (Collapsible Desktop Sidebar, Mobile Drawer & Bottom Nav, Top Header, Save Status indicator)
+- [x] Implement global Keyboard Shortcut provider (`Cmd/Ctrl + \`, `Cmd/Ctrl + K` shell)
+- [x] Create route shells for `/dashboard`, `/tasks`, `/notes`, `/mind-maps`, `/projects`, and `/settings`
+- [x] Configure Vitest + React Testing Library and verify tests (`T1.1–T1.3`), `typecheck`, `lint`, and `build`
+
+## Phase 2: Supabase Schema, RLS Security & Authentication Flow
+- [x] Create SQL migrations (`0001_initial_schema.sql`, `0002_rls_policies.sql`, `0003_triggers_fts_and_constraints.sql`)
+- [x] Configure `@supabase/ssr` browser client, server client, and auth middleware
+- [x] Build `/login`, `/signup`, `/forgot-password`, `/update-password`, `/auth/callback`, and sidebar logout dropdown
+- [x] Verify route protection, auth validation, and SQL/RLS tests (`T2.1–T2.4A` passed locally; `T2.4B` live two-user DB test ready and awaiting `.env.local` credentials)
+
+## Phase 3: Projects Organization & Google Tasks-Inspired Task Manager
+- [ ] Implement Projects CRUD and sidebar/page filters
+- [ ] Implement Tasks CRUD (quick-add bar, completion toggle, due dates, priority, subtasks)
+- [ ] Implement `@dnd-kit/sortable` drag-and-drop task reordering with fractional indexing
+- [ ] Implement roll-forward task recurrence engine (`daily`, `weekly`, `monthly`)
+- [ ] Verify unit and component tests (`T3.1–T3.3`)
+
+## Phase 4: Notion-Inspired Rich-Text Notes Editor & Reliable Auto-Save
+- [ ] Implement Notes list, pinning, and project filtering
+- [ ] Build Tiptap rich-text editor (`/notes/[noteId]`) with `/` slash command menu
+- [ ] Implement Write-Ahead Auto-Save hook (`800ms` debounce, local recovery buffer, optimistic `version` check, `note_versions` snapshots)
+- [ ] Verify auto-save, recovery, and editor tests (`T4.1–T4.3`)
+
+## Phase 5: Interactive Mind Maps Canvas (React Flow)
+- [ ] Implement Mind Maps gallery and `/mind-maps/[mapId]` React Flow workspace
+- [ ] Build custom nodes (`IdeaNode`, `TaskRefNode`, `NoteRefNode`) and Node Inspector panel
+- [ ] Implement keyboard graph shortcuts (`Tab` child node, `Enter` sibling node, `Delete`)
+- [ ] Implement drag-stop delta persistence and stale-update prevention
+- [ ] Verify graph diff, coordinate placement, and canvas tests (`T5.1–T5.3`)
+
+## Phase 6: Cross-Linking Engine (Knowledge Graph & Backlinks)
+- [ ] Implement polymorphic `entity_links` repository and backlink queries
+- [ ] Build `[[` inline entity link extension in Tiptap
+- [ ] Build "Convert Node to Task / Note" actions in Mind Maps
+- [ ] Build universal Backlinks panel across Tasks, Notes, and Mind Map Nodes
+- [ ] Verify link extraction and bi-directional backlink tests (`T6.1–T6.2`)
+
+## Phase 7: Unified Dashboard & Global Search (`Cmd/Ctrl + K`)
+- [ ] Build `/dashboard` daily focus view (Today/Overdue tasks, recent notes, active mind maps, project progress, quick capture)
+- [ ] Implement `/api/search` with PostgreSQL Full-Text Search (`tsvector`) and fallback matching
+- [ ] Connect `cmdk` Global Command Palette for instant search and quick creation commands
+- [ ] Verify search ranking and command palette tests (`T7.1–T7.2`)
+
+## Phase 8: Data Export, Error Recovery, Mobile Polish & Final Verification
+- [ ] Build `/api/export` workspace export (JSON + Markdown archive)
+- [ ] Implement Supabase Storage attachments for notes
+- [ ] Add error boundaries, offline/conflict recovery dialogs, and mobile touch refinements
+- [ ] Execute full test suite, typecheck, lint, and production build verification (`T8.1–T8.2`)
