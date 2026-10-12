@@ -48,7 +48,7 @@ export function AuthShell({
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="hidden sm:inline-flex">
             <ShieldCheck className="h-3 w-3 text-domain-note" />
-            End-to-End RLS Protected
+            Server-Verified Security
           </Badge>
           <ThemeToggle />
         </div>

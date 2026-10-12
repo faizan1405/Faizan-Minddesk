@@ -15,7 +15,7 @@ export default function MindMapsPage() {
             <Badge variant="map">React Flow Interactive Canvas</Badge>
           </div>
           <p className="text-xs text-foreground-muted">
-            Visual idea graphs with first-class PostgreSQL node persistence and
+            Visual idea graphs with first-class MySQL node persistence and
             task/note node bindings.
           </p>
         </div>

@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 interface LoginFormProps {
   nextPath?: string;
   initialError?: string;
-  supabaseConfigured?: boolean;
+  authConfigured?: boolean;
   actionOverride?: (
     prevState: AuthActionState,
     formData: FormData
@@ -25,14 +25,14 @@ interface LoginFormProps {
 const ERROR_MESSAGES: Record<string, string> = {
   auth_callback_failed:
     "The authentication link is invalid or has expired. Please sign in or request a new link.",
-  supabase_not_configured:
-    "Supabase environment variables are not configured in .env.local.",
+  auth_not_configured:
+    "Database and authentication environment variables are not configured.",
 };
 
 export function LoginForm({
   nextPath = "/dashboard",
   initialError,
-  supabaseConfigured = true,
+  authConfigured = true,
   actionOverride,
 }: LoginFormProps) {
   const [state, formAction, isPending] = React.useActionState(
@@ -53,16 +53,25 @@ export function LoginForm({
     <form action={formAction} noValidate className="space-y-4">
       <input type="hidden" name="next" value={nextPath} />
 
-      {!supabaseConfigured && (
+      {!authConfigured && (
         <div
           role="alert"
           className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-700 dark:text-amber-300"
         >
-          <strong>Local Setup Required:</strong> Configure{" "}
-          <code className="font-mono">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-          <code className="font-mono">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in{" "}
-          <code className="font-mono">.env.local</code> to connect live
-          authentication.
+          <p>
+            <strong>Environment Setup Required:</strong> Configure{" "}
+            <code className="font-mono">DATABASE_URL</code> and{" "}
+            <code className="font-mono">BETTER_AUTH_SECRET</code> in{" "}
+            <code className="font-mono">.env.local</code> (or Hostinger hPanel)
+            to connect live MySQL authentication.
+          </p>
+          <Link
+            href={nextPath}
+            className="mt-2 inline-flex items-center gap-1 font-semibold underline underline-offset-2 hover:opacity-80"
+          >
+            <span>Continue to Workspace (Local Preview)</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
         </div>
       )}
 

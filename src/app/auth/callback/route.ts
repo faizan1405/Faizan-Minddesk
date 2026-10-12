@@ -1,39 +1,57 @@
 import { NextResponse, type NextRequest } from "next/server";
-import type { EmailOtpType } from "@supabase/supabase-js";
-import {
-  isSupabaseConfigured,
-  sanitizeRedirectPath,
-} from "@/lib/supabase/env";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { auth } from "@/lib/auth/auth";
+import { isAuthConfigured, sanitizeRedirectPath } from "@/lib/auth/env";
+import { RECOVERY_TOKEN_COOKIE } from "@/lib/auth/middleware";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
-  const tokenHash = searchParams.get("token_hash");
-  const type = searchParams.get("type") as EmailOtpType | null;
+  const token = searchParams.get("token")?.trim();
+  const type = searchParams.get("type")?.trim();
+  const errorParam = searchParams.get("error")?.trim();
   const next = sanitizeRedirectPath(searchParams.get("next"), "/dashboard");
 
-  if (!isSupabaseConfigured()) {
+  if (!isAuthConfigured()) {
     return NextResponse.redirect(
-      new URL("/login?error=supabase_not_configured", origin)
+      new URL("/login?error=auth_not_configured", origin)
     );
   }
 
-  const supabase = await createSupabaseServerClient();
+  if (errorParam) {
+    return NextResponse.redirect(
+      new URL("/login?error=auth_callback_failed", origin)
+    );
+  }
 
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      return NextResponse.redirect(new URL(next, origin));
-    }
-  } else if (tokenHash && type) {
-    const { error } = await supabase.auth.verifyOtp({
-      type,
-      token_hash: tokenHash,
+  // 1. Password recovery token flow -> store short-lived HttpOnly recovery token cookie and redirect to /update-password
+  if (token && (type === "recovery" || next.startsWith("/update-password"))) {
+    const targetUrl = new URL("/update-password", origin);
+    targetUrl.searchParams.set("token", token);
+
+    const response = NextResponse.redirect(targetUrl);
+    response.cookies.set(RECOVERY_TOKEN_COOKIE, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 15 * 60, // 15 minutes
     });
-    if (!error) {
-      const target = type === "recovery" ? "/update-password" : next;
-      return NextResponse.redirect(new URL(target, origin));
+    return response;
+  }
+
+  // 2. Email verification token flow -> verify via Better Auth server API
+  if (token && (type === "verify" || type === "email" || !type)) {
+    try {
+      await auth.api.verifyEmail({
+        query: {
+          token,
+        },
+        headers: request.headers,
+      });
+      return NextResponse.redirect(new URL(next, origin));
+    } catch {
+      return NextResponse.redirect(
+        new URL("/login?error=auth_callback_failed", origin)
+      );
     }
   }
 

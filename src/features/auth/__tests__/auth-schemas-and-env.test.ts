@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   evaluatePasswordStrength,
   forgotPasswordSchema,
@@ -6,9 +6,24 @@ import {
   signupSchema,
   updatePasswordSchema,
 } from "@/features/auth/schemas";
-import { sanitizeRedirectPath } from "@/lib/supabase/env";
+import {
+  isAuthConfigured,
+  isDatabaseConfigured,
+  isSmtpConfigured,
+  sanitizeRedirectPath,
+} from "@/lib/auth/env";
 
-describe("T2.1 — Auth Zod Schemas, Password Strength & Redirect Sanitizer", () => {
+describe("T2.1 — Auth Zod Schemas, Password Strength, Env Validators & Redirect Sanitizer", () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
   it("validates loginSchema and rejects invalid email or short password", () => {
     expect(
       loginSchema.safeParse({
@@ -77,6 +92,36 @@ describe("T2.1 — Auth Zod Schemas, Password Strength & Redirect Sanitizer", ()
       hasNumberOrSymbol: true,
       score: 3,
     });
+  });
+
+  it("validates MySQL DATABASE_URL, BETTER_AUTH_SECRET, and SMTP configuration", () => {
+    delete process.env.DATABASE_URL;
+    delete process.env.BETTER_AUTH_SECRET;
+    expect(isDatabaseConfigured()).toBe(false);
+    expect(isAuthConfigured()).toBe(false);
+
+    // Rejects template placeholders
+    process.env.DATABASE_URL =
+      "mysql://your-mysql-user:your-mysql-password@localhost:3306/your-database-name";
+    process.env.BETTER_AUTH_SECRET = "replace-with-a-32-char-secret";
+    expect(isDatabaseConfigured()).toBe(false);
+    expect(isAuthConfigured()).toBe(false);
+
+    // Accepts valid MySQL URL and strong secret
+    process.env.DATABASE_URL =
+      "mysql://u123456_minddesk:StrongPass!@127.0.0.1:3306/u123456_minddesk";
+    process.env.BETTER_AUTH_SECRET =
+      "a-very-strong-production-secret-at-least-32-characters";
+    expect(isDatabaseConfigured()).toBe(true);
+    expect(isAuthConfigured()).toBe(true);
+
+    // SMTP configuration check
+    expect(isSmtpConfigured()).toBe(false);
+    process.env.SMTP_HOST = "smtp.hostinger.com";
+    process.env.SMTP_PORT = "465";
+    process.env.SMTP_USER = "noreply@minddesk.app";
+    process.env.SMTP_PASS = "SmtpSecretPass123!";
+    expect(isSmtpConfigured()).toBe(true);
   });
 
   it("sanitizes post-login redirect paths and blocks open-redirect attacks", () => {

@@ -1,6 +1,6 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   forgotPasswordSchema,
@@ -8,11 +8,12 @@ import {
   signupSchema,
   updatePasswordSchema,
 } from "@/features/auth/schemas";
-import {
-  isSupabaseConfigured,
-  sanitizeRedirectPath,
-} from "@/lib/supabase/env";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { auth } from "@/lib/auth/auth";
+import { isAuthConfigured, sanitizeRedirectPath } from "@/lib/auth/env";
+import { RECOVERY_TOKEN_COOKIE } from "@/lib/auth/middleware";
+import { ensureUserWorkspaceProvisioned } from "@/lib/auth/provisioning";
+import { getVerifiedSession } from "@/lib/auth/server";
+import { prisma } from "@/lib/db/prisma";
 
 export interface AuthActionState {
   status: "idle" | "error" | "success";
@@ -24,8 +25,13 @@ export const INITIAL_AUTH_STATE: AuthActionState = {
   status: "idle",
 };
 
+const NOT_CONFIGURED_MESSAGE =
+  "Database and authentication are not configured yet. Add DATABASE_URL and BETTER_AUTH_SECRET to .env.local or your Hostinger environment variables.";
+
 async function resolveAppOrigin(): Promise<string> {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  const configured =
+    process.env.BETTER_AUTH_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (configured && configured.startsWith("http")) {
     return configured.replace(/\/$/, "");
   }
@@ -40,6 +46,24 @@ async function resolveAppOrigin(): Promise<string> {
     // Fallback to localhost
   }
   return "http://localhost:3000";
+}
+
+function extractAuthErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === "object") {
+    if ("body" in err && err.body && typeof err.body === "object") {
+      const bodyObj = err.body as { message?: string };
+      if (typeof bodyObj.message === "string" && bodyObj.message.trim()) {
+        return bodyObj.message;
+      }
+    }
+    if ("message" in err && typeof (err as { message?: unknown }).message === "string") {
+      const msg = (err as { message: string }).message.trim();
+      if (msg) {
+        return msg;
+      }
+    }
+  }
+  return fallback;
 }
 
 export async function loginAction(
@@ -61,24 +85,43 @@ export async function loginAction(
     };
   }
 
-  if (!isSupabaseConfigured()) {
+  if (!isAuthConfigured()) {
     return {
       status: "error",
-      message:
-        "Supabase is not configured yet. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local.",
+      message: NOT_CONFIGURED_MESSAGE,
     };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithPassword({
-    email: parsed.data.email,
-    password: parsed.data.password,
-  });
+  try {
+    const reqHeaders = await headers();
+    const result = await auth.api.signInEmail({
+      body: {
+        email: parsed.data.email,
+        password: parsed.data.password,
+      },
+      headers: reqHeaders,
+    });
 
-  if (error) {
+    if (!result?.user) {
+      return {
+        status: "error",
+        message: "Invalid email or password.",
+      };
+    }
+
+    await ensureUserWorkspaceProvisioned(
+      {
+        id: result.user.id,
+        email: result.user.email,
+        name: result.user.name,
+        image: result.user.image,
+      },
+      prisma
+    );
+  } catch (err) {
     return {
       status: "error",
-      message: error.message || "Invalid email or password.",
+      message: extractAuthErrorMessage(err, "Invalid email or password."),
     };
   }
 
@@ -93,7 +136,9 @@ export async function signupAction(
   const raw = {
     fullName: String(formData.get("fullName") ?? ""),
     email: String(formData.get("email") ?? ""),
-    password: String(formData.get("new-password") ?? formData.get("password") ?? ""),
+    password: String(
+      formData.get("new-password") ?? formData.get("password") ?? ""
+    ),
     next: formData.get("next") ? String(formData.get("next")) : undefined,
   };
 
@@ -106,40 +151,55 @@ export async function signupAction(
     };
   }
 
-  if (!isSupabaseConfigured()) {
+  if (!isAuthConfigured()) {
     return {
       status: "error",
-      message:
-        "Supabase is not configured yet. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local.",
+      message: NOT_CONFIGURED_MESSAGE,
     };
   }
 
   const origin = await resolveAppOrigin();
   const safeNext = sanitizeRedirectPath(parsed.data.next, "/dashboard");
-  const supabase = await createSupabaseServerClient();
 
-  const { data, error } = await supabase.auth.signUp({
-    email: parsed.data.email,
-    password: parsed.data.password,
-    options: {
-      data: {
-        full_name: parsed.data.fullName,
+  let signedInImmediately = false;
+
+  try {
+    const reqHeaders = await headers();
+    const result = await auth.api.signUpEmail({
+      body: {
+        name: parsed.data.fullName,
+        email: parsed.data.email,
+        password: parsed.data.password,
+        callbackURL: `${origin}/auth/callback?type=verify&next=${encodeURIComponent(
+          safeNext
+        )}`,
       },
-      emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(
-        safeNext
-      )}`,
-    },
-  });
+      headers: reqHeaders,
+    });
 
-  if (error) {
+    if (result?.user) {
+      await ensureUserWorkspaceProvisioned(
+        {
+          id: result.user.id,
+          email: result.user.email,
+          name: result.user.name,
+          image: result.user.image,
+        },
+        prisma
+      );
+    }
+
+    if (result?.token) {
+      signedInImmediately = true;
+    }
+  } catch (err) {
     return {
       status: "error",
-      message: error.message || "Unable to create your account.",
+      message: extractAuthErrorMessage(err, "Unable to create your account."),
     };
   }
 
-  // If email confirmation is disabled in Supabase, session is returned immediately
-  if (data.session) {
+  if (signedInImmediately) {
     redirect(safeNext);
   }
 
@@ -167,28 +227,31 @@ export async function forgotPasswordAction(
     };
   }
 
-  if (!isSupabaseConfigured()) {
+  if (!isAuthConfigured()) {
     return {
       status: "error",
-      message:
-        "Supabase is not configured yet. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local.",
+      message: NOT_CONFIGURED_MESSAGE,
     };
   }
 
   const origin = await resolveAppOrigin();
-  const supabase = await createSupabaseServerClient();
 
-  const { error } = await supabase.auth.resetPasswordForEmail(
-    parsed.data.email,
-    {
-      redirectTo: `${origin}/auth/callback?next=/update-password`,
-    }
-  );
-
-  if (error) {
+  try {
+    const reqHeaders = await headers();
+    await auth.api.requestPasswordReset({
+      body: {
+        email: parsed.data.email,
+        redirectTo: `${origin}/auth/callback?type=recovery&next=/update-password`,
+      },
+      headers: reqHeaders,
+    });
+  } catch (err) {
     return {
       status: "error",
-      message: error.message || "Unable to send password reset instructions.",
+      message: extractAuthErrorMessage(
+        err,
+        "Unable to send password reset instructions."
+      ),
     };
   }
 
@@ -204,7 +267,9 @@ export async function updatePasswordAction(
   formData: FormData
 ): Promise<AuthActionState> {
   const raw = {
-    password: String(formData.get("new-password") ?? formData.get("password") ?? ""),
+    password: String(
+      formData.get("new-password") ?? formData.get("password") ?? ""
+    ),
   };
 
   const parsed = updatePasswordSchema.safeParse(raw);
@@ -216,35 +281,60 @@ export async function updatePasswordAction(
     };
   }
 
-  if (!isSupabaseConfigured()) {
+  if (!isAuthConfigured()) {
     return {
       status: "error",
-      message:
-        "Supabase is not configured yet. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local.",
+      message: NOT_CONFIGURED_MESSAGE,
     };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const cookieStore = await cookies();
+  const formToken = String(formData.get("token") ?? "").trim();
+  const cookieToken = cookieStore.get(RECOVERY_TOKEN_COOKIE)?.value?.trim() ?? "";
+  const recoveryToken = formToken || cookieToken;
 
-  if (!user) {
+  try {
+    if (recoveryToken) {
+      const reqHeaders = await headers();
+      await auth.api.resetPassword({
+        body: {
+          newPassword: parsed.data.password,
+          token: recoveryToken,
+        },
+        headers: reqHeaders,
+      });
+
+      cookieStore.delete(RECOVERY_TOKEN_COOKIE);
+    } else {
+      const session = await getVerifiedSession();
+      if (!session?.user) {
+        return {
+          status: "error",
+          message:
+            "Your recovery session has expired. Please request a new password reset link.",
+        };
+      }
+
+      const ctx = await auth.$context;
+      const hashedPassword = await ctx.password.hash(parsed.data.password);
+
+      await prisma.account.updateMany({
+        where: {
+          userId: session.user.id,
+          providerId: "credential",
+        },
+        data: {
+          password: hashedPassword,
+        },
+      });
+    }
+  } catch (err) {
     return {
       status: "error",
-      message:
-        "Your recovery session has expired. Please request a new password reset link.",
-    };
-  }
-
-  const { error } = await supabase.auth.updateUser({
-    password: parsed.data.password,
-  });
-
-  if (error) {
-    return {
-      status: "error",
-      message: error.message || "Unable to update your password.",
+      message: extractAuthErrorMessage(
+        err,
+        "Unable to update your password. Your recovery token may have expired."
+      ),
     };
   }
 
@@ -252,9 +342,15 @@ export async function updatePasswordAction(
 }
 
 export async function signOutAction(): Promise<void> {
-  if (isSupabaseConfigured()) {
-    const supabase = await createSupabaseServerClient();
-    await supabase.auth.signOut();
+  if (isAuthConfigured()) {
+    try {
+      const reqHeaders = await headers();
+      await auth.api.signOut({
+        headers: reqHeaders,
+      });
+    } catch {
+      // Proceed to login redirect even if session was already expired
+    }
   }
   redirect("/login");
 }

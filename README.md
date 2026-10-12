@@ -11,39 +11,46 @@ MindDesk is a modern, distraction-free personal knowledge and productivity web a
 
 ## Technology Stack
 
-- **Framework:** Next.js (App Router) + TypeScript
-- **Styling & UI:** Tailwind CSS, `shadcn/ui`, `lucide-react`, `next-themes`
+- **Framework:** Next.js 15 (App Router) + TypeScript
+- **Styling & UI:** Tailwind CSS, `shadcn/ui`, `lucide-react`, `next-themes`, Zustand
+- **Database & ORM:** Hostinger MySQL + Prisma ORM (`@prisma/client`)
+- **Authentication:** Better Auth (MySQL/Prisma adapter, server-verified sessions, SMTP email verification & password recovery)
 - **Rich-Text Editor:** Tiptap (ProseMirror)
 - **Mind Map Canvas:** React Flow (`@xyflow/react`)
 - **Drag & Drop:** `dnd-kit` (`@dnd-kit/core`, `@dnd-kit/sortable`)
-- **Backend & Auth:** Supabase (PostgreSQL, Row-Level Security, PKCE Auth, Storage, Full-Text Search)
-- **Testing:** Vitest, React Testing Library, Playwright
-- **Deployment:** Vercel
+- **Testing:** Vitest, React Testing Library
+- **Deployment:** GitHub → Hostinger Node.js Web App + Hostinger MySQL
 
 ## Architecture Highlights
 
-- **Modular Feature Isolation:** Domain logic is cleanly separated under `src/features/{auth,projects,tasks,notes,mind-maps,links,search}`.
-- **Multi-User Ready Schema:** All entities belong to a `workspace_id` with PostgreSQL Row-Level Security (RLS) enforced via `workspace_members`.
+- **Modular Feature Isolation:** Domain logic is cleanly separated under `src/features/{auth,projects,tasks,notes,mind-maps,links,search}` and `src/lib/{auth,db,security}`.
+- **Defense-in-Depth Multi-Tenant Security:** All 13 domain tables belong to a `workspace_id` and `user_id`. Every server action, API endpoint, and repository call enforces explicit server-side session verification (`requireAuthenticatedUser()`) and workspace/entity ownership checks (`createScopedRepository()`) to prevent IDOR and cross-user data leaks.
 - **Zero-Data-Loss Auto-Save:** Write-ahead local buffer (`localStorage` / `IndexedDB`) paired with debounced optimistic concurrency updates (`version` counter) and conflict recovery.
 
-## Local Development Setup (Starting in Phase 1)
+## Local Development Setup
 
 ```bash
-# 1. Install dependencies
+# 1. Install dependencies (automatically generates Prisma Client)
 npm install
 
 # 2. Configure environment variables
 cp .env.example .env.local
+# Edit .env.local with your local or development MySQL DATABASE_URL and BETTER_AUTH_SECRET
 
-# 3. Start the development server
+# 3. Apply MySQL schema migrations (when MySQL is running)
+npm run db:migrate:deploy
+
+# 4. Start the development server
 npm run dev
 
-# 4. Run verification checks
+# 5. Run verification checks
 npm run typecheck
 npm run lint
 npm run test
+npm run build
 ```
 
 ## Documentation & Tracking
 
+- **Hostinger Deployment Guide:** See [`HOSTINGER_DEPLOYMENT.md`](./HOSTINGER_DEPLOYMENT.md) for step-by-step MySQL setup, phpMyAdmin migration import, and GitHub → Hostinger Node.js deployment instructions.
 - **Development Checklist:** See [`CHECKLIST.md`](./CHECKLIST.md) for the 8-phase implementation roadmap, acceptance criteria, and verification status.

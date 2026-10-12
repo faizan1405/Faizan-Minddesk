@@ -6,11 +6,11 @@
 - [x] Inspect current workspace (`e:\Work\Faizan\Faizan Document website`)
 - [x] Prepare complete system architecture & implementation plan
 - [x] Define modular folder structure and App Router routes
-- [x] Define PostgreSQL schema, relationships, indexes, and RLS policies
+- [x] Define 13-table MySQL schema, Prisma models, relationships, indexes, and server-side authorization guards
 - [x] Define UI/UX design system (tokens, typography, layout, shortcuts)
 - [x] Define 8 testable phases with acceptance criteria and test cases
 - [x] Document technical risks and concrete mitigation strategies
-- [x] Create project `README.md` and `CHECKLIST.md`
+- [x] Create project `README.md`, `HOSTINGER_DEPLOYMENT.md`, and `CHECKLIST.md`
 
 ---
 
@@ -22,11 +22,14 @@
 - [x] Create route shells for `/dashboard`, `/tasks`, `/notes`, `/mind-maps`, `/projects`, and `/settings`
 - [x] Configure Vitest + React Testing Library and verify tests (`T1.1–T1.3`), `typecheck`, `lint`, and `build`
 
-## Phase 2: Supabase Schema, RLS Security & Authentication Flow
-- [x] Create SQL migrations (`0001_initial_schema.sql`, `0002_rls_policies.sql`, `0003_triggers_fts_and_constraints.sql`)
-- [x] Configure `@supabase/ssr` browser client, server client, and auth middleware
-- [x] Build `/login`, `/signup`, `/forgot-password`, `/update-password`, `/auth/callback`, and sidebar logout dropdown
-- [x] Verify route protection, auth validation, and SQL/RLS tests (`T2.1–T2.4A` passed locally; `T2.4B` live two-user DB test ready and awaiting `.env.local` credentials)
+## Phase 2: Hostinger MySQL Schema (Prisma), Server-Side Authorization & Better Auth Flow
+- [x] Audit and remove all Supabase (`@supabase/ssr`, `@supabase/supabase-js`) and PostgreSQL-only dependencies
+- [x] Migrate 13-table domain schema + 4 Better Auth core tables to MySQL (`prisma/schema.prisma` & `prisma/migrations/20261013000000_init_mysql_schema/migration.sql`)
+- [x] Configure Better Auth with MySQL Prisma adapter, transactional workspace provisioning, and SMTP email support (`nodemailer`)
+- [x] Implement explicit server-side authorization and IDOR-safe scoped repository (`src/lib/security/authorization.ts`) replacing PostgreSQL RLS and triggers
+- [x] Update `/login`, `/signup`, `/forgot-password`, `/update-password`, `/auth/callback`, `/api/auth/[...all]`, and sidebar logout dropdown
+- [x] Prepare Hostinger Node.js & MySQL deployment configuration (`HOSTINGER_DEPLOYMENT.md` & `.env.example`)
+- [x] Verify route protection, auth validation, MySQL schema DDL, and two-user authorization/IDOR tests (`T2.1–T2.4B` passed locally; `T2.4C` live MySQL integration test ready and awaiting `DATABASE_URL` credentials)
 
 ## Phase 3: Projects Organization & Google Tasks-Inspired Task Manager
 - [ ] Implement Projects CRUD and sidebar/page filters
@@ -57,12 +60,12 @@
 
 ## Phase 7: Unified Dashboard & Global Search (`Cmd/Ctrl + K`)
 - [ ] Build `/dashboard` daily focus view (Today/Overdue tasks, recent notes, active mind maps, project progress, quick capture)
-- [ ] Implement `/api/search` with PostgreSQL Full-Text Search (`tsvector`) and fallback matching
+- [ ] Implement `/api/search` with MySQL `FULLTEXT` search and fallback matching
 - [ ] Connect `cmdk` Global Command Palette for instant search and quick creation commands
 - [ ] Verify search ranking and command palette tests (`T7.1–T7.2`)
 
 ## Phase 8: Data Export, Error Recovery, Mobile Polish & Final Verification
 - [ ] Build `/api/export` workspace export (JSON + Markdown archive)
-- [ ] Implement Supabase Storage attachments for notes
+- [ ] Implement file attachments for notes
 - [ ] Add error boundaries, offline/conflict recovery dialogs, and mobile touch refinements
 - [ ] Execute full test suite, typecheck, lint, and production build verification (`T8.1–T8.2`)

@@ -3,8 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { ForgotPasswordForm } from "@/features/auth/components/forgot-password-form";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { getVerifiedUser } from "@/lib/supabase/server";
+import { isAuthConfigured } from "@/lib/auth/env";
+import { getVerifiedUser } from "@/lib/auth/server";
 
 export const metadata: Metadata = {
   title: "Reset password",
@@ -43,7 +43,7 @@ export default async function ForgotPasswordPage({
     >
       <ForgotPasswordForm
         initialError={params.error}
-        supabaseConfigured={isSupabaseConfigured()}
+        authConfigured={isAuthConfigured()}
       />
     </AuthShell>
   );

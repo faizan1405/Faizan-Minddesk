@@ -7,7 +7,7 @@ const SAMPLE_NOTES = [
     id: "n-1",
     title: "MindDesk Architecture & Sync Protocol",
     excerpt:
-      "Write-ahead local recovery buffer paired with optimistic version counters in PostgreSQL...",
+      "Write-ahead local recovery buffer paired with optimistic version counters in MySQL...",
     updatedAt: "Just now",
     pinned: true,
     backlinks: 4,

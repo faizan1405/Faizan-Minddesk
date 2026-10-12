@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 const SAMPLE_TASKS = [
   {
     id: "t-1",
-    title: "Design Supabase schema & Row-Level Security policies",
+    title: "Verify MySQL Prisma schema & server-side authorization guards",
     project: "Product Strategy",
     due: "Today",
     priority: "High",

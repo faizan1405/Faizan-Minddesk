@@ -18,6 +18,7 @@ import { PasswordInput } from "@/features/auth/components/password-input";
 import { Button } from "@/components/ui/button";
 
 interface UpdatePasswordFormProps {
+  recoveryToken?: string;
   actionOverride?: (
     prevState: AuthActionState,
     formData: FormData
@@ -25,6 +26,7 @@ interface UpdatePasswordFormProps {
 }
 
 export function UpdatePasswordForm({
+  recoveryToken,
   actionOverride,
 }: UpdatePasswordFormProps) {
   const [state, formAction, isPending] = React.useActionState(
@@ -37,6 +39,9 @@ export function UpdatePasswordForm({
 
   return (
     <form action={formAction} noValidate className="space-y-4">
+      {recoveryToken && (
+        <input type="hidden" name="token" value={recoveryToken} />
+      )}
       {state.status === "error" && state.message && (
         <div
           role="alert"

@@ -1,32 +1,23 @@
 // @vitest-environment node
 import { NextRequest } from "next/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  BETTER_AUTH_SESSION_COOKIES,
   isGuestOnlyAuthPath,
   isProtectedWorkspacePath,
+  RECOVERY_TOKEN_COOKIE,
   updateSessionAndGuardRoutes,
-} from "@/lib/supabase/middleware";
+} from "@/lib/auth/middleware";
 
-const mockGetUser = vi.fn();
-
-vi.mock("@supabase/ssr", () => ({
-  createServerClient: () => ({
-    auth: {
-      getUser: mockGetUser,
-    },
-  }),
-}));
-
-describe("T2.2 — Route Protection & Session Refresh Middleware", () => {
+describe("T2.2 — Route Protection & Better Auth Session Middleware", () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
     process.env = {
       ...originalEnv,
-      NEXT_PUBLIC_SUPABASE_URL: "https://example-project.supabase.co",
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test",
+      DATABASE_URL: "mysql://minddesk:password@127.0.0.1:3306/minddesk",
+      BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long-12345",
     };
-    mockGetUser.mockReset();
   });
 
   afterEach(() => {
@@ -49,8 +40,6 @@ describe("T2.2 — Route Protection & Session Refresh Middleware", () => {
   });
 
   it("redirects unauthenticated visitors from protected routes to /login with safe next param", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
-
     const req = new NextRequest(
       new URL("http://localhost:3000/notes?filter=pinned")
     );
@@ -63,9 +52,7 @@ describe("T2.2 — Route Protection & Session Refresh Middleware", () => {
     );
   });
 
-  it("redirects unauthenticated visitors from /update-password to /forgot-password", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
-
+  it("redirects unauthenticated visitors from /update-password without a recovery token to /forgot-password", async () => {
     const req = new NextRequest(
       new URL("http://localhost:3000/update-password")
     );
@@ -77,14 +64,33 @@ describe("T2.2 — Route Protection & Session Refresh Middleware", () => {
     );
   });
 
+  it("allows visitors with a valid password recovery token or cookie to access /update-password", async () => {
+    const queryTokenReq = new NextRequest(
+      new URL("http://localhost:3000/update-password?token=valid-reset-token")
+    );
+    const queryRes = await updateSessionAndGuardRoutes(queryTokenReq);
+    expect(queryRes.status).toBe(200);
+
+    const cookieTokenReq = new NextRequest(
+      new URL("http://localhost:3000/update-password"),
+      {
+        headers: {
+          cookie: `${RECOVERY_TOKEN_COOKIE}=valid-cookie-token`,
+        },
+      }
+    );
+    const cookieRes = await updateSessionAndGuardRoutes(cookieTokenReq);
+    expect(cookieRes.status).toBe(200);
+  });
+
   it("redirects authenticated users away from /login and /signup to safe next or /dashboard", async () => {
-    mockGetUser.mockResolvedValue({
-      data: { user: { id: "user-123", email: "user@example.com" } },
-      error: null,
-    });
+    const sessionCookieHeader = `${BETTER_AUTH_SESSION_COOKIES[0]}=session-token-123`;
 
     const loginReq = new NextRequest(
-      new URL("http://localhost:3000/login?next=%2Fmind-maps")
+      new URL("http://localhost:3000/login?next=%2Fmind-maps"),
+      {
+        headers: { cookie: sessionCookieHeader },
+      }
     );
     const loginRes = await updateSessionAndGuardRoutes(loginReq);
     expect(loginRes.status).toBe(307);
@@ -94,7 +100,10 @@ describe("T2.2 — Route Protection & Session Refresh Middleware", () => {
 
     // Malicious open-redirect in ?next= is neutralized to /dashboard
     const unsafeReq = new NextRequest(
-      new URL("http://localhost:3000/login?next=https://evil.example.com")
+      new URL("http://localhost:3000/login?next=https://evil.example.com"),
+      {
+        headers: { cookie: sessionCookieHeader },
+      }
     );
     const unsafeRes = await updateSessionAndGuardRoutes(unsafeReq);
     expect(unsafeRes.status).toBe(307);
@@ -104,12 +113,11 @@ describe("T2.2 — Route Protection & Session Refresh Middleware", () => {
   });
 
   it("allows authenticated users to access protected workspace routes", async () => {
-    mockGetUser.mockResolvedValue({
-      data: { user: { id: "user-123", email: "user@example.com" } },
-      error: null,
+    const req = new NextRequest(new URL("http://localhost:3000/dashboard"), {
+      headers: {
+        cookie: `${BETTER_AUTH_SESSION_COOKIES[0]}=session-token-123`,
+      },
     });
-
-    const req = new NextRequest(new URL("http://localhost:3000/dashboard"));
     const res = await updateSessionAndGuardRoutes(req);
 
     expect(res.status).toBe(200);

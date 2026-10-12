@@ -3,11 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { LoginForm } from "@/features/auth/components/login-form";
-import {
-  isSupabaseConfigured,
-  sanitizeRedirectPath,
-} from "@/lib/supabase/env";
-import { getVerifiedUser } from "@/lib/supabase/server";
+import { isAuthConfigured, sanitizeRedirectPath } from "@/lib/auth/env";
+import { getVerifiedUser } from "@/lib/auth/server";
 
 export const metadata: Metadata = {
   title: "Sign in",
@@ -50,7 +47,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <LoginForm
         nextPath={nextPath}
         initialError={params.error}
-        supabaseConfigured={isSupabaseConfigured()}
+        authConfigured={isAuthConfigured()}
       />
     </AuthShell>
   );

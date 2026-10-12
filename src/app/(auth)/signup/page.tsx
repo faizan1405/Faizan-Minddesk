@@ -3,11 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { SignupForm } from "@/features/auth/components/signup-form";
-import {
-  isSupabaseConfigured,
-  sanitizeRedirectPath,
-} from "@/lib/supabase/env";
-import { getVerifiedUser } from "@/lib/supabase/server";
+import { isAuthConfigured, sanitizeRedirectPath } from "@/lib/auth/env";
+import { getVerifiedUser } from "@/lib/auth/server";
 
 export const metadata: Metadata = {
   title: "Create account",
@@ -47,10 +44,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
         </span>
       }
     >
-      <SignupForm
-        nextPath={nextPath}
-        supabaseConfigured={isSupabaseConfigured()}
-      />
+      <SignupForm nextPath={nextPath} authConfigured={isAuthConfigured()} />
     </AuthShell>
   );
 }

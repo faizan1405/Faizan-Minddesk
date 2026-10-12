@@ -16,7 +16,7 @@ vi.mock("next/navigation", () => ({
 
 describe("T2.3 — Auth Forms, Accessibility Attributes & Sidebar UserMenu", () => {
   it("renders LoginForm with mandatory autocomplete attributes and Show/Hide password toggle", () => {
-    render(<LoginForm nextPath="/tasks" supabaseConfigured={true} />);
+    render(<LoginForm nextPath="/tasks" authConfigured={true} />);
 
     const emailInput = screen.getByLabelText(/email address/i);
     expect(emailInput).toHaveAttribute("type", "email");
@@ -39,7 +39,7 @@ describe("T2.3 — Auth Forms, Accessibility Attributes & Sidebar UserMenu", () 
   });
 
   it("renders SignupForm with new-password autocomplete and live password strength meter", () => {
-    render(<SignupForm supabaseConfigured={true} />);
+    render(<SignupForm authConfigured={true} />);
 
     const nameInput = screen.getByLabelText(/full name/i);
     expect(nameInput).toHaveAttribute("autocomplete", "name");
@@ -55,13 +55,13 @@ describe("T2.3 — Auth Forms, Accessibility Attributes & Sidebar UserMenu", () 
   });
 
   it("renders ForgotPasswordForm and UpdatePasswordForm with accessible controls", () => {
-    const { unmount } = render(<ForgotPasswordForm supabaseConfigured={true} />);
+    const { unmount } = render(<ForgotPasswordForm authConfigured={true} />);
     expect(
       screen.getByRole("button", { name: /send reset link/i })
     ).toBeInTheDocument();
     unmount();
 
-    render(<UpdatePasswordForm />);
+    render(<UpdatePasswordForm recoveryToken="reset-token-123" />);
     expect(
       screen.getByRole("button", { name: /update password/i })
     ).toBeInTheDocument();

@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 
 interface SignupFormProps {
   nextPath?: string;
-  supabaseConfigured?: boolean;
+  authConfigured?: boolean;
   actionOverride?: (
     prevState: AuthActionState,
     formData: FormData
@@ -31,7 +31,7 @@ interface SignupFormProps {
 
 export function SignupForm({
   nextPath = "/dashboard",
-  supabaseConfigured = true,
+  authConfigured = true,
   actionOverride,
 }: SignupFormProps) {
   const [state, formAction, isPending] = React.useActionState(
@@ -74,15 +74,16 @@ export function SignupForm({
     <form action={formAction} noValidate className="space-y-4">
       <input type="hidden" name="next" value={nextPath} />
 
-      {!supabaseConfigured && (
+      {!authConfigured && (
         <div
           role="alert"
           className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-700 dark:text-amber-300"
         >
-          <strong>Local Setup Required:</strong> Configure{" "}
-          <code className="font-mono">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-          <code className="font-mono">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in{" "}
-          <code className="font-mono">.env.local</code> to create accounts.
+          <strong>Environment Setup Required:</strong> Configure{" "}
+          <code className="font-mono">DATABASE_URL</code> and{" "}
+          <code className="font-mono">BETTER_AUTH_SECRET</code> in{" "}
+          <code className="font-mono">.env.local</code> (or Hostinger hPanel) to
+          create accounts.
         </div>
       )}
 

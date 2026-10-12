@@ -8,7 +8,15 @@ export const metadata: Metadata = {
   description: "Set a new password for your MindDesk account.",
 };
 
-export default function UpdatePasswordPage() {
+interface UpdatePasswordPageProps {
+  searchParams?: Promise<{ token?: string }>;
+}
+
+export default async function UpdatePasswordPage({
+  searchParams,
+}: UpdatePasswordPageProps) {
+  const params = searchParams ? await searchParams : undefined;
+
   return (
     <AuthShell
       title="Set a new password"
@@ -25,7 +33,7 @@ export default function UpdatePasswordPage() {
         </span>
       }
     >
-      <UpdatePasswordForm />
+      <UpdatePasswordForm recoveryToken={params?.token} />
     </AuthShell>
   );
 }

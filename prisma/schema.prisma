@@ -1,0 +1,518 @@
+// ============================================================================
+// MindDesk — Prisma Schema (MySQL Provider for Hostinger)
+// Migrated from PostgreSQL/Supabase to MySQL + Better Auth + Prisma ORM
+// Preserves all 13 domain tables + Better Auth core identity/session tables
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// 1. Domain Enumerations
+// ----------------------------------------------------------------------------
+
+enum WorkspaceRole {
+  owner
+  editor
+  viewer
+}
+
+enum ProjectStatus {
+  active
+  archived
+  completed
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  done
+}
+
+enum TaskPriority {
+  none
+  low
+  medium
+  high
+}
+
+enum MindMapNodeType {
+  idea
+  task_ref
+  note_ref
+  group
+}
+
+enum MindMapEdgeType {
+  default
+  smoothstep
+  bezier
+  straight
+}
+
+enum LinkableEntityType {
+  task
+  note
+  mind_map
+  mind_map_node
+}
+
+enum EntityRelationshipType {
+  references
+  derived_from
+  blocks
+  related
+}
+
+// ----------------------------------------------------------------------------
+// 2. Better Auth Core Tables (Users, Sessions, Accounts, Verifications)
+// ----------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(uuid()) @db.VarChar(36)
+  name          String    @db.VarChar(255)
+  email         String    @unique @db.VarChar(255)
+  emailVerified Boolean   @default(false) @map("email_verified")
+  image         String?   @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  sessions      Session[]
+  accounts      Account[]
+  profile       Profile?
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  expiresAt DateTime @map("expires_at")
+  token     String   @unique @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  userAgent String?  @map("user_agent") @db.Text
+  userId    String   @map("user_id") @db.VarChar(36)
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_sessions_user")
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(uuid()) @db.VarChar(36)
+  accountId             String    @map("account_id") @db.VarChar(255)
+  providerId            String    @map("provider_id") @db.VarChar(255)
+  userId                String    @map("user_id") @db.VarChar(36)
+  accessToken           String?   @map("access_token") @db.Text
+  refreshToken          String?   @map("refresh_token") @db.Text
+  idToken               String?   @map("id_token") @db.Text
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?   @db.Text
+  password              String?   @db.Text
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_accounts_user")
+  @@map("accounts")
+}
+
+model Verification {
+  id         String    @id @default(uuid()) @db.VarChar(36)
+  identifier String    @db.VarChar(255)
+  value      String    @db.Text
+  expiresAt  DateTime  @map("expires_at")
+  createdAt  DateTime? @default(now()) @map("created_at")
+  updatedAt  DateTime? @updatedAt @map("updated_at")
+
+  @@index([identifier], map: "idx_verifications_identifier")
+  @@map("verifications")
+}
+
+// ----------------------------------------------------------------------------
+// 3. Profiles & Workspaces (13-Table Domain Architecture)
+// ----------------------------------------------------------------------------
+
+model Profile {
+  id                 String    @id @db.VarChar(36)
+  email              String    @db.VarChar(255)
+  fullName           String    @default("") @map("full_name") @db.VarChar(255)
+  avatarUrl          String?   @map("avatar_url") @db.Text
+  defaultWorkspaceId String?   @map("default_workspace_id") @db.VarChar(36)
+  preferences        Json
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  user               User               @relation(fields: [id], references: [id], onDelete: Cascade)
+  defaultWorkspace   Workspace?         @relation("ProfileDefaultWorkspace", fields: [defaultWorkspaceId], references: [id], onDelete: SetNull)
+  ownedWorkspaces    Workspace[]        @relation("WorkspaceOwner")
+  workspaceMembers   WorkspaceMember[]
+  projects           Project[]
+  taskLists          TaskList[]
+  tasks              Task[]
+  notes              Note[]
+  noteVersions       NoteVersion[]
+  mindMaps           MindMap[]
+  mindMapNodes       MindMapNode[]
+  mindMapEdges       MindMapEdge[]
+  entityLinks        EntityLink[]
+  attachments        Attachment[]
+
+  @@index([defaultWorkspaceId], map: "idx_profiles_default_workspace")
+  @@map("profiles")
+}
+
+model Workspace {
+  id               String            @id @default(uuid()) @db.VarChar(36)
+  name             String            @db.VarChar(255)
+  ownerId          String            @map("owner_id") @db.VarChar(36)
+  isPersonal       Boolean           @default(true) @map("is_personal")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  owner            Profile           @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  defaultForUsers  Profile[]         @relation("ProfileDefaultWorkspace")
+  members          WorkspaceMember[]
+  projects         Project[]
+  taskLists        TaskList[]
+  tasks            Task[]
+  notes            Note[]
+  noteVersions     NoteVersion[]
+  mindMaps         MindMap[]
+  mindMapNodes     MindMapNode[]
+  mindMapEdges     MindMapEdge[]
+  entityLinks      EntityLink[]
+  attachments      Attachment[]
+
+  @@index([ownerId], map: "idx_workspaces_owner")
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  workspaceId String        @map("workspace_id") @db.VarChar(36)
+  userId      String        @map("user_id") @db.VarChar(36)
+  role        WorkspaceRole @default(owner)
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        Profile       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([userId], map: "idx_workspace_members_user")
+  @@map("workspace_members")
+}
+
+// ----------------------------------------------------------------------------
+// 4. Projects
+// ----------------------------------------------------------------------------
+
+model Project {
+  id          String        @id @default(uuid()) @db.VarChar(36)
+  workspaceId String        @map("workspace_id") @db.VarChar(36)
+  userId      String        @map("user_id") @db.VarChar(36)
+  name        String        @db.VarChar(255)
+  description String        @default("") @db.Text
+  color       String        @default("#6366f1") @db.VarChar(32)
+  icon        String        @default("folder") @db.VarChar(64)
+  status      ProjectStatus @default(active)
+  position    Float         @default(1000.0) @db.Double
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        Profile       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskLists   TaskList[]
+  tasks       Task[]
+  notes       Note[]
+  mindMaps    MindMap[]
+
+  @@unique([id, workspaceId], map: "uq_projects_id_workspace")
+  @@unique([id, userId, workspaceId], map: "uq_projects_id_user_workspace")
+  @@index([workspaceId, status, position], map: "idx_projects_workspace_pos")
+  @@index([userId], map: "idx_projects_user")
+  @@map("projects")
+}
+
+// ----------------------------------------------------------------------------
+// 5. Task Lists & Tasks
+// ----------------------------------------------------------------------------
+
+model TaskList {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  workspaceId String    @map("workspace_id") @db.VarChar(36)
+  userId      String    @map("user_id") @db.VarChar(36)
+  projectId   String?   @map("project_id") @db.VarChar(36)
+  name        String    @db.VarChar(255)
+  isDefault   Boolean   @default(false) @map("is_default")
+  position    Float     @default(1000.0) @db.Double
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        Profile   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  tasks       Task[]
+
+  @@unique([id, workspaceId], map: "uq_task_lists_id_workspace")
+  @@unique([id, userId, workspaceId], map: "uq_task_lists_id_user_workspace")
+  @@index([workspaceId, position], map: "idx_task_lists_workspace_pos")
+  @@index([userId], map: "idx_task_lists_user")
+  @@index([projectId], map: "idx_task_lists_project")
+  @@map("task_lists")
+}
+
+model Task {
+  id                 String        @id @default(uuid()) @db.VarChar(36)
+  workspaceId        String        @map("workspace_id") @db.VarChar(36)
+  userId             String        @map("user_id") @db.VarChar(36)
+  taskListId         String?       @map("task_list_id") @db.VarChar(36)
+  projectId          String?       @map("project_id") @db.VarChar(36)
+  parentTaskId       String?       @map("parent_task_id") @db.VarChar(36)
+  recurrenceSourceId String?       @map("recurrence_source_id") @db.VarChar(36)
+  title              String        @db.VarChar(500)
+  description        String        @default("") @db.Text
+  status             TaskStatus    @default(todo)
+  priority           TaskPriority  @default(none)
+  dueDate            DateTime?     @map("due_date")
+  completedAt        DateTime?     @map("completed_at")
+  recurrenceRule     Json?         @map("recurrence_rule")
+  position           Float         @default(1000.0) @db.Double
+  version            Int           @default(1)
+  isArchived         Boolean       @default(false) @map("is_archived")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  workspace          Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user               Profile       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskList           TaskList?     @relation(fields: [taskListId], references: [id], onDelete: SetNull)
+  project            Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parentTask         Task?         @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks           Task[]        @relation("TaskSubtasks")
+  recurrenceSource   Task?         @relation("TaskRecurrence", fields: [recurrenceSourceId], references: [id], onDelete: SetNull)
+  recurrenceChildren Task[]        @relation("TaskRecurrence")
+  linkedNodes        MindMapNode[]
+
+  @@unique([id, workspaceId], map: "uq_tasks_id_workspace")
+  @@unique([id, userId, workspaceId], map: "uq_tasks_id_user_workspace")
+  @@index([workspaceId, taskListId, status, position], map: "idx_tasks_workspace_list_pos")
+  @@index([projectId], map: "idx_tasks_project")
+  @@index([parentTaskId], map: "idx_tasks_parent")
+  @@index([workspaceId, dueDate], map: "idx_tasks_due_date")
+  @@index([userId], map: "idx_tasks_user")
+  @@fulltext([title, description], map: "idx_tasks_fts")
+  @@map("tasks")
+}
+
+// ----------------------------------------------------------------------------
+// 6. Notes & Note Recovery Snapshots
+// ----------------------------------------------------------------------------
+
+model Note {
+  id           String        @id @default(uuid()) @db.VarChar(36)
+  workspaceId  String        @map("workspace_id") @db.VarChar(36)
+  userId       String        @map("user_id") @db.VarChar(36)
+  projectId    String?       @map("project_id") @db.VarChar(36)
+  parentNoteId String?       @map("parent_note_id") @db.VarChar(36)
+  title        String        @default("Untitled Note") @db.VarChar(500)
+  contentJson  Json          @map("content_json")
+  contentText  String        @default("") @map("content_text") @db.LongText
+  isPinned     Boolean       @default(false) @map("is_pinned")
+  isArchived   Boolean       @default(false) @map("is_archived")
+  position     Float         @default(1000.0) @db.Double
+  version      Int           @default(1)
+  lastSavedAt  DateTime      @default(now()) @map("last_saved_at")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         Profile       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parentNote   Note?         @relation("NoteHierarchy", fields: [parentNoteId], references: [id], onDelete: SetNull)
+  childNotes   Note[]        @relation("NoteHierarchy")
+  versions     NoteVersion[]
+  linkedNodes  MindMapNode[]
+
+  @@unique([id, workspaceId], map: "uq_notes_id_workspace")
+  @@unique([id, userId, workspaceId], map: "uq_notes_id_user_workspace")
+  @@index([workspaceId, isArchived, isPinned, updatedAt], map: "idx_notes_workspace_updated")
+  @@index([projectId], map: "idx_notes_project")
+  @@index([parentNoteId], map: "idx_notes_parent")
+  @@index([userId], map: "idx_notes_user")
+  @@fulltext([title, contentText], map: "idx_notes_fts")
+  @@map("notes")
+}
+
+model NoteVersion {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  noteId      String    @map("note_id") @db.VarChar(36)
+  workspaceId String    @map("workspace_id") @db.VarChar(36)
+  userId      String    @map("user_id") @db.VarChar(36)
+  version     Int
+  contentJson Json      @map("content_json")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        Profile   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note        Note      @relation(fields: [noteId, userId, workspaceId], references: [id, userId, workspaceId], onDelete: Cascade, map: "fk_note_versions_same_owner")
+
+  @@index([noteId, version], map: "idx_note_versions_note")
+  @@index([workspaceId], map: "idx_note_versions_workspace")
+  @@index([userId], map: "idx_note_versions_user")
+  @@map("note_versions")
+}
+
+// ----------------------------------------------------------------------------
+// 7. Mind Maps, First-Class Nodes & Directed Connections (Edges)
+// ----------------------------------------------------------------------------
+
+model MindMap {
+  id          String        @id @default(uuid()) @db.VarChar(36)
+  workspaceId String        @map("workspace_id") @db.VarChar(36)
+  userId      String        @map("user_id") @db.VarChar(36)
+  projectId   String?       @map("project_id") @db.VarChar(36)
+  title       String        @db.VarChar(500)
+  description String        @default("") @db.Text
+  viewport    Json
+  position    Float         @default(1000.0) @db.Double
+  version     Int           @default(1)
+  isArchived  Boolean       @default(false) @map("is_archived")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        Profile       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  nodes       MindMapNode[]
+  edges       MindMapEdge[]
+
+  @@unique([id, workspaceId], map: "uq_mind_maps_id_workspace")
+  @@unique([id, userId, workspaceId], map: "uq_mind_maps_id_user_workspace")
+  @@index([workspaceId, isArchived, updatedAt], map: "idx_mind_maps_workspace_updated")
+  @@index([projectId], map: "idx_mind_maps_project")
+  @@index([userId], map: "idx_mind_maps_user")
+  @@fulltext([title, description], map: "idx_mind_maps_fts")
+  @@map("mind_maps")
+}
+
+model MindMapNode {
+  id           String          @id @default(uuid()) @db.VarChar(36)
+  mindMapId    String          @map("mind_map_id") @db.VarChar(36)
+  workspaceId  String          @map("workspace_id") @db.VarChar(36)
+  userId       String          @map("user_id") @db.VarChar(36)
+  type         MindMapNodeType @default(idea)
+  label        String          @default("New Idea") @db.VarChar(500)
+  noteExcerpt  String          @default("") @map("note_excerpt") @db.Text
+  positionX    Float           @default(0.0) @map("position_x") @db.Double
+  positionY    Float           @default(0.0) @map("position_y") @db.Double
+  width        Float?          @db.Double
+  height       Float?          @db.Double
+  zIndex       Int             @default(0) @map("z_index")
+  style        Json
+  data         Json
+  linkedTaskId String?         @map("linked_task_id") @db.VarChar(36)
+  linkedNoteId String?         @map("linked_note_id") @db.VarChar(36)
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         Profile         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mindMap      MindMap         @relation(fields: [mindMapId, userId, workspaceId], references: [id, userId, workspaceId], onDelete: Cascade, map: "fk_nodes_mind_map_same_owner")
+  linkedTask   Task?           @relation(fields: [linkedTaskId], references: [id], onDelete: SetNull)
+  linkedNote   Note?           @relation(fields: [linkedNoteId], references: [id], onDelete: SetNull)
+  outgoingEdges MindMapEdge[]  @relation("EdgeSourceNode")
+  incomingEdges MindMapEdge[]  @relation("EdgeTargetNode")
+
+  @@unique([id, mindMapId, userId, workspaceId], map: "uq_nodes_id_map_user_workspace")
+  @@unique([id, userId, workspaceId], map: "uq_nodes_id_user_workspace")
+  @@index([mindMapId], map: "idx_mind_map_nodes_map")
+  @@index([linkedTaskId], map: "idx_mind_map_nodes_linked_task")
+  @@index([linkedNoteId], map: "idx_mind_map_nodes_linked_note")
+  @@index([workspaceId], map: "idx_mind_map_nodes_workspace")
+  @@index([userId], map: "idx_mind_map_nodes_user")
+  @@fulltext([label, noteExcerpt], map: "idx_mind_map_nodes_fts")
+  @@map("mind_map_nodes")
+}
+
+model MindMapEdge {
+  id           String          @id @default(uuid()) @db.VarChar(36)
+  mindMapId    String          @map("mind_map_id") @db.VarChar(36)
+  workspaceId  String          @map("workspace_id") @db.VarChar(36)
+  userId       String          @map("user_id") @db.VarChar(36)
+  sourceNodeId String          @map("source_node_id") @db.VarChar(36)
+  targetNodeId String          @map("target_node_id") @db.VarChar(36)
+  sourceHandle String?         @map("source_handle") @db.VarChar(64)
+  targetHandle String?         @map("target_handle") @db.VarChar(64)
+  label        String          @default("") @db.VarChar(255)
+  type         MindMapEdgeType @default(smoothstep)
+  animated     Boolean         @default(false)
+  style        Json
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         Profile         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mindMap      MindMap         @relation(fields: [mindMapId, userId, workspaceId], references: [id, userId, workspaceId], onDelete: Cascade, map: "fk_edges_mind_map_same_owner")
+  sourceNode   MindMapNode     @relation("EdgeSourceNode", fields: [sourceNodeId, mindMapId, userId, workspaceId], references: [id, mindMapId, userId, workspaceId], onDelete: Cascade, map: "fk_edges_source_node_same_map")
+  targetNode   MindMapNode     @relation("EdgeTargetNode", fields: [targetNodeId, mindMapId, userId, workspaceId], references: [id, mindMapId, userId, workspaceId], onDelete: Cascade, map: "fk_edges_target_node_same_map")
+
+  @@unique([mindMapId, sourceNodeId, targetNodeId, sourceHandle, targetHandle], map: "uq_edges_connection")
+  @@index([mindMapId], map: "idx_mind_map_edges_map")
+  @@index([workspaceId], map: "idx_mind_map_edges_workspace")
+  @@index([userId], map: "idx_mind_map_edges_user")
+  @@map("mind_map_edges")
+}
+
+// ----------------------------------------------------------------------------
+// 8. Cross-Links (Bi-Directional Knowledge Graph) & Attachments
+// ----------------------------------------------------------------------------
+
+model EntityLink {
+  id           String                 @id @default(uuid()) @db.VarChar(36)
+  workspaceId  String                 @map("workspace_id") @db.VarChar(36)
+  userId       String                 @map("user_id") @db.VarChar(36)
+  sourceType   LinkableEntityType     @map("source_type")
+  sourceId     String                 @map("source_id") @db.VarChar(36)
+  targetType   LinkableEntityType     @map("target_type")
+  targetId     String                 @map("target_id") @db.VarChar(36)
+  relationship EntityRelationshipType @default(references)
+  createdAt    DateTime               @default(now()) @map("created_at")
+
+  workspace    Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         Profile                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, sourceType, sourceId, targetType, targetId], map: "uq_entity_links_pair")
+  @@index([workspaceId, sourceType, sourceId], map: "idx_entity_links_source")
+  @@index([workspaceId, targetType, targetId], map: "idx_entity_links_target")
+  @@index([userId], map: "idx_entity_links_user")
+  @@map("entity_links")
+}
+
+model Attachment {
+  id          String             @id @default(uuid()) @db.VarChar(36)
+  workspaceId String             @map("workspace_id") @db.VarChar(36)
+  userId      String             @map("user_id") @db.VarChar(36)
+  entityType  LinkableEntityType @map("entity_type")
+  entityId    String             @map("entity_id") @db.VarChar(36)
+  storagePath String             @unique(map: "uq_attachments_storage_path") @map("storage_path") @db.VarChar(512)
+  fileName    String             @map("file_name") @db.VarChar(255)
+  mimeType    String             @map("mime_type") @db.VarChar(128)
+  sizeBytes   BigInt             @map("size_bytes")
+  createdAt   DateTime           @default(now()) @map("created_at")
+
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        Profile            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, entityType, entityId], map: "idx_attachments_entity")
+  @@index([userId], map: "idx_attachments_user")
+  @@map("attachments")
+}

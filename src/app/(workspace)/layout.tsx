@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { getVerifiedUser } from "@/lib/supabase/server";
+import { isAuthConfigured } from "@/lib/auth/env";
+import { getVerifiedUser } from "@/lib/auth/server";
 
 export default async function WorkspaceLayout({
   children,
@@ -10,8 +10,8 @@ export default async function WorkspaceLayout({
 }) {
   const user = await getVerifiedUser();
 
-  // Server-side defense-in-depth: verify identity before rendering workspace routes
-  if (isSupabaseConfigured() && !user) {
+  // Server-side defense-in-depth: verify identity against MySQL session before rendering workspace routes
+  if (isAuthConfigured() && !user) {
     redirect("/login");
   }
 
