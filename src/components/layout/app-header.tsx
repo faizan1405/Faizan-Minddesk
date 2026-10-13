@@ -11,6 +11,7 @@ import {
   pathnameToWorkspaceView,
   workspaceTitles,
 } from "@/features/minddesk/workspace-types";
+import { PlanYourDayButton } from "@/features/planner/components/plan-your-day-button";
 
 export function AppHeader() {
   const pathname = usePathname() || "/dashboard";
@@ -53,6 +54,10 @@ export function AppHeader() {
           {workspaceTitles[view]}
         </h2>
         <SaveStatusBadge />
+      </div>
+
+      <div className="hidden sm:flex items-center">
+        <PlanYourDayButton size="sm" variant="subtle" />
       </div>
 
       <Button

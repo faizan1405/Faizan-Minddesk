@@ -4,7 +4,9 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  CalendarCheck2,
   CalendarDays,
+  Clock,
   FileText,
   Focus,
   Home,
@@ -44,6 +46,18 @@ export const PRIMARY_NAV_ITEMS: NavItemConfig[] = [
     icon: ListTodo,
   },
   {
+    id: "calendar",
+    title: "Calendar",
+    href: "/calendar",
+    icon: CalendarDays,
+  },
+  {
+    id: "plan-your-day",
+    title: "Plan your day",
+    href: "/plan-your-day",
+    icon: CalendarCheck2,
+  },
+  {
     id: "notes",
     title: "Notes",
     href: "/notes",
@@ -63,6 +77,39 @@ export const PRIMARY_NAV_ITEMS: NavItemConfig[] = [
   },
 ];
 
+export const MOBILE_NAV_ITEMS: NavItemConfig[] = [
+  {
+    id: "home",
+    title: "Home",
+    href: "/dashboard",
+    icon: Home,
+  },
+  {
+    id: "tasks",
+    title: "Tasks",
+    href: "/tasks",
+    icon: ListTodo,
+  },
+  {
+    id: "calendar",
+    title: "Calendar",
+    href: "/calendar",
+    icon: CalendarDays,
+  },
+  {
+    id: "notes",
+    title: "Notes",
+    href: "/notes",
+    icon: FileText,
+  },
+  {
+    id: "maps",
+    title: "Maps",
+    href: "/mind-maps",
+    icon: Map,
+  },
+];
+
 export const SECONDARY_NAV_ITEMS: NavItemConfig[] = [
   {
     id: "favorites",
@@ -74,7 +121,7 @@ export const SECONDARY_NAV_ITEMS: NavItemConfig[] = [
     id: "recent",
     title: "Recent",
     href: "/recent",
-    icon: CalendarDays,
+    icon: Clock,
   },
   {
     id: "settings",
@@ -340,7 +387,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         aria-label="Mobile navigation"
         className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-border bg-card/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1 backdrop-blur md:hidden"
       >
-        {PRIMARY_NAV_ITEMS.map(({ id, title, href, icon: Icon }) => {
+        {MOBILE_NAV_ITEMS.map(({ id, title, href, icon: Icon }) => {
           const active = isActiveRoute(href);
           return (
             <Link
@@ -353,9 +400,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
               )}
             >
               <Icon className="size-5" />
-              <span className="max-w-full truncate">
-                {title === "Your desk" ? "Home" : title}
-              </span>
+              <span className="max-w-full truncate">{title}</span>
             </Link>
           );
         })}

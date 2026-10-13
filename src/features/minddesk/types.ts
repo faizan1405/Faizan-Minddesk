@@ -97,6 +97,15 @@ export interface ProjectItem {
   hue: "violet" | "mint" | "amber" | "blue";
 }
 
+import type {
+  CalendarCategory,
+  CalendarEvent,
+  CalendarSettings,
+  DailyPlan,
+  RecurrenceException,
+  ScheduledTaskBlock,
+} from "@/features/calendar/types";
+
 export interface DeskData {
   tasks: TaskItem[];
   taskLists?: TaskList[];
@@ -105,4 +114,11 @@ export interface DeskData {
   projects: ProjectItem[];
   theme: "light" | "dark";
   version?: number;
+  events?: CalendarEvent[];
+  categories?: CalendarCategory[];
+  exceptions?: RecurrenceException[];
+  scheduledBlocks?: ScheduledTaskBlock[];
+  dailyPlans?: Record<string, DailyPlan>;
+  calendarSettings?: CalendarSettings;
 }
+

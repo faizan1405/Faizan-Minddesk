@@ -28,6 +28,7 @@ import {
   Star,
   Sun,
   X,
+  CalendarCheck2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { useUIStore } from "@/stores/ui-store";
 import { MindDeskProvider, useDeskData } from "./store";
+import { CalendarProvider } from "@/features/calendar/calendar-context";
+import { CalendarWorkspace } from "@/features/calendar/components/calendar-workspace";
+import { DailyPlannerWorkspace } from "@/features/planner/components/daily-planner-workspace";
+import { PlanYourDayButton } from "@/features/planner/components/plan-your-day-button";
 import { MapsView, NotesView, ProjectsView } from "./library-views";
 import { TasksView } from "./tasks-view";
 import { workspaceRoutes, workspaceTitles, type WorkspaceView } from "./workspace-types";
@@ -43,6 +48,8 @@ import type { TaskItem } from "./types";
 export const mainLinks: { id: WorkspaceView; label: string; href: string; icon: typeof Home }[] = [
   { id: "home", label: "Your desk", href: "/dashboard", icon: Home },
   { id: "tasks", label: "My tasks", href: "/tasks", icon: ListTodo },
+  { id: "calendar", label: "Calendar", href: "/calendar", icon: CalendarDays },
+  { id: "plan-your-day", label: "Plan your day", href: "/plan-your-day", icon: CalendarCheck2 },
   { id: "notes", label: "Notes", href: "/notes", icon: FileText },
   { id: "maps", label: "Mind maps", href: "/mind-maps", icon: Map },
   { id: "projects", label: "Projects", href: "/projects", icon: LayoutGrid },
@@ -51,7 +58,9 @@ export const mainLinks: { id: WorkspaceView; label: string; href: string; icon: 
 export function MindDeskWorkspace({ initialView = "home" }: { initialView?: WorkspaceView } = {}) {
   return (
     <MindDeskProvider>
-      <Workspace initialView={initialView} />
+      <CalendarProvider>
+        <Workspace initialView={initialView} />
+      </CalendarProvider>
     </MindDeskProvider>
   );
 }
@@ -311,6 +320,10 @@ function Workspace({ initialView }: { initialView: WorkspaceView }) {
             <DashboardView navigate={navigate} onQuick={() => setQuickOpen(true)} />
           ) : view === "tasks" ? (
             <TasksView {...(selectedItem ? { initialTaskId: selectedItem } : {})} />
+          ) : view === "calendar" ? (
+            <div className="mx-auto w-full max-w-[96rem] p-4 sm:p-6"><CalendarWorkspace /></div>
+          ) : view === "plan-your-day" ? (
+            <div className="mx-auto w-full max-w-[96rem] p-4 sm:p-6"><DailyPlannerWorkspace /></div>
           ) : view === "notes" ? (
             <NotesView {...(selectedItem ? { initialNoteId: selectedItem } : {})} />
           ) : view === "maps" ? (
@@ -333,7 +346,7 @@ function Workspace({ initialView }: { initialView: WorkspaceView }) {
           aria-label="Mobile navigation"
           className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-border bg-card/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1 backdrop-blur md:hidden"
         >
-          {mainLinks.map(({ id, label, icon: Icon }) => (
+          {mainLinks.slice(0, 5).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => navigate(id)}
@@ -572,9 +585,12 @@ export function DashboardView({
           <h1 className="truncate text-3xl font-semibold tracking-tight sm:text-[34px]">{hello}, Faizan.</h1>
           <p className="mt-2 text-sm text-muted-foreground">Let’s turn today’s ideas into progress.</p>
         </div>
-        <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
-          <CalendarDays className="size-4" />
-          {new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" }).format(new Date())}
+        <div className="flex flex-wrap items-center gap-3">
+          <PlanYourDayButton size="md" />
+          <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
+            <CalendarDays className="size-4" />
+            {new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" }).format(new Date())}
+          </div>
         </div>
       </header>
 

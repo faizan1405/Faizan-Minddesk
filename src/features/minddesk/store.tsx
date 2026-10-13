@@ -95,7 +95,9 @@ export function migrateDeskData(candidate: DeskData): DeskData {
 
   const defaultListId = lists[0]?.id || "list-my-tasks";
 
-  const migratedTasks: TaskItem[] = candidate.tasks.map((task, index) => {
+  const migratedTasks: TaskItem[] = (
+    Array.isArray(candidate.tasks) ? candidate.tasks : initialDeskData.tasks
+  ).map((task, index) => {
     let assignedListId = task.listId;
     if (!assignedListId || !lists.some((l) => l.id === assignedListId)) {
       if (task.projectId === "launch") {
@@ -125,9 +127,18 @@ export function migrateDeskData(candidate: DeskData): DeskData {
 
   return {
     ...candidate,
-    version: 2,
+    version: 3,
     taskLists: lists,
     tasks: migratedTasks,
+    notes: Array.isArray(candidate.notes) ? candidate.notes : initialDeskData.notes,
+    maps: Array.isArray(candidate.maps) ? candidate.maps : initialDeskData.maps,
+    projects: Array.isArray(candidate.projects) ? candidate.projects : initialDeskData.projects,
+    events: candidate.events,
+    categories: candidate.categories,
+    exceptions: candidate.exceptions,
+    scheduledBlocks: candidate.scheduledBlocks,
+    dailyPlans: candidate.dailyPlans,
+    calendarSettings: candidate.calendarSettings,
   };
 }
 
@@ -135,10 +146,9 @@ function isDeskData(value: unknown): value is DeskData {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Partial<DeskData>;
   return (
-    Array.isArray(candidate.tasks) &&
-    Array.isArray(candidate.notes) &&
-    Array.isArray(candidate.maps) &&
-    Array.isArray(candidate.projects) &&
-    (candidate.theme === "light" || candidate.theme === "dark")
+    Array.isArray(candidate.tasks) ||
+    Array.isArray(candidate.notes) ||
+    Array.isArray(candidate.maps)
   );
 }
+

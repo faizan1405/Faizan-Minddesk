@@ -7,6 +7,7 @@ import { CommandPalette } from "@/components/layout/command-palette";
 import { QuickCaptureModal } from "@/components/layout/quick-capture-modal";
 import { ShortcutProvider } from "@/components/layout/shortcut-provider";
 import { MindDeskProvider } from "@/features/minddesk/store";
+import { CalendarProvider } from "@/features/calendar/calendar-context";
 import type { AuthUserSummary } from "@/types/domain";
 
 export interface AppShellProps {
@@ -17,7 +18,8 @@ export interface AppShellProps {
 export function AppShell({ children, user }: AppShellProps) {
   return (
     <MindDeskProvider>
-      <ShortcutProvider>
+      <CalendarProvider>
+        <ShortcutProvider>
         <div className="minddesk-shell flex min-h-screen w-full bg-background text-foreground">
           <a
             href="#main-content"
@@ -42,6 +44,7 @@ export function AppShell({ children, user }: AppShellProps) {
           <QuickCaptureModal />
         </div>
       </ShortcutProvider>
-    </MindDeskProvider>
-  );
+    </CalendarProvider>
+  </MindDeskProvider>
+);
 }
