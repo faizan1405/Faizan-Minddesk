@@ -32,6 +32,15 @@ export interface ProfilePreferencesJson {
   _version?: number;
   _updatedAt?: string;
   _sectionVersions?: Record<string, number>;
+  _tombstones?: {
+    taskLists?: string[];
+    projects?: string[];
+    tasks?: string[];
+    notes?: string[];
+    habits?: string[];
+    routines?: string[];
+    events?: string[];
+  };
   theme?: "light" | "dark";
   calendar?: {
     events?: CalendarEvent[];

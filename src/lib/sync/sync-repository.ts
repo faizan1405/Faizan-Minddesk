@@ -278,21 +278,79 @@ export function reconcileProfilePreferences(
   const nextVersion = currentVersion + 1;
   const nowIso = new Date().toISOString();
 
+  const existingTombstones = currentPrefs._tombstones || {};
+  const newTombstones = {
+    taskLists: Array.from(
+      new Set([
+        ...(existingTombstones.taskLists || []),
+        ...(options.deletedTaskListIds || []),
+      ])
+    ).slice(-500),
+    projects: Array.from(
+      new Set([
+        ...(existingTombstones.projects || []),
+        ...(options.deletedProjectIds || []),
+      ])
+    ).slice(-500),
+    tasks: Array.from(
+      new Set([
+        ...(existingTombstones.tasks || []),
+        ...(options.deletedTaskIds || []),
+      ])
+    ).slice(-500),
+    notes: Array.from(
+      new Set([
+        ...(existingTombstones.notes || []),
+        ...(options.deletedNoteIds || []),
+      ])
+    ).slice(-500),
+    habits: Array.from(
+      new Set([
+        ...(existingTombstones.habits || []),
+        ...(options.deletedHabitIds || []),
+      ])
+    ).slice(-500),
+    routines: Array.from(
+      new Set([
+        ...(existingTombstones.routines || []),
+        ...(options.deletedRoutineIds || []),
+      ])
+    ).slice(-500),
+    events: Array.from(
+      new Set([
+        ...(existingTombstones.events || []),
+        ...(options.deletedEventIds || []),
+      ])
+    ).slice(-500),
+  };
+
+  const deletedEventIdsSet = new Set([
+    ...(options.deletedEventIds || []),
+    ...(newTombstones.events || []),
+  ]);
+  const deletedHabitIdsSet = new Set([
+    ...(options.deletedHabitIds || []),
+    ...(newTombstones.habits || []),
+  ]);
+  const deletedRoutineIdsSet = new Set([
+    ...(options.deletedRoutineIds || []),
+    ...(newTombstones.routines || []),
+  ]);
+
   if (!isConcurrentConflict) {
     const updatedPrefs: ProfilePreferencesJson = {
       ...currentPrefs,
       _version: nextVersion,
       _updatedAt: nowIso,
+      _tombstones: newTombstones,
       ...(incomingData.theme !== undefined ? { theme: incomingData.theme } : {}),
       calendar: {
         ...(currentPrefs.calendar || {}),
         ...(incomingData.events !== undefined
           ? {
-              events: options.deletedEventIds?.length
-                ? incomingData.events.filter(
-                    (e) => !options.deletedEventIds?.includes(e.id)
-                  )
-                : incomingData.events,
+              events: incomingData.events.filter(
+                (e) => !deletedEventIdsSet.has(e.id)
+              ),
             }
           : {}),
         ...(incomingData.categories !== undefined
@@ -318,11 +376,9 @@ export function reconcileProfilePreferences(
         ...(currentPrefs.habits || {}),
         ...(incomingData.habits !== undefined
           ? {
-              habits: options.deletedHabitIds?.length
-                ? incomingData.habits.filter(
-                    (h) => !options.deletedHabitIds?.includes(h.id)
-                  )
-                : incomingData.habits,
+              habits: incomingData.habits.filter(
+                (h) => !deletedHabitIdsSet.has(h.id)
+              ),
             }
           : {}),
         ...(incomingData.habitCompletions !== undefined
@@ -336,11 +392,9 @@ export function reconcileProfilePreferences(
         ...(currentPrefs.routines || {}),
         ...(incomingData.routines !== undefined
           ? {
-              routines: options.deletedRoutineIds?.length
-                ? incomingData.routines.filter(
-                    (r) => !options.deletedRoutineIds?.includes(r.id)
-                  )
-                : incomingData.routines,
+              routines: incomingData.routines.filter(
+                (r) => !deletedRoutineIdsSet.has(r.id)
+              ),
             }
           : {}),
         ...(incomingData.routineSessions !== undefined
@@ -364,11 +418,6 @@ export function reconcileProfilePreferences(
       preferencesVersion: nextVersion,
     };
   }
-
-  // Conflict Detected: Reconcile concurrent writes safely to prevent data loss
-  const deletedEventIdsSet = new Set(options.deletedEventIds || []);
-  const deletedHabitIdsSet = new Set(options.deletedHabitIds || []);
-  const deletedRoutineIdsSet = new Set(options.deletedRoutineIds || []);
 
   function reconcileEntities<T extends { id: string }>(
     serverItems: T[] | undefined,
@@ -421,6 +470,7 @@ export function reconcileProfilePreferences(
     ...currentPrefs,
     _version: nextVersion,
     _updatedAt: nowIso,
+    _tombstones: newTombstones,
     theme:
       incomingData.theme !== undefined ? incomingData.theme : currentPrefs.theme,
     calendar: {
@@ -512,6 +562,9 @@ export function reconcileProfilePreferences(
   };
 }
 
+// Process-level serialization queue per user to prevent lost updates across concurrent requests
+const userSaveQueues = new Map<string, Promise<unknown>>();
+
 /**
  * Atomically saves workspace data to MySQL for the authenticated actor.
  * Upserts domain records safely and preserves cross-tenant isolation.
@@ -530,11 +583,90 @@ export async function saveWorkspaceDeskData(
 }> {
   await assertWorkspaceWriteAccess(db, actor, workspaceId);
 
-  return db.$transaction(async (tx) => {
-    const deletedProjectIdsSet = new Set(options.deletedProjectIds || []);
-    const deletedTaskListIdsSet = new Set(options.deletedTaskListIds || []);
+  // Serialize concurrent writes for the same actor within this process
+  const previousQueue = userSaveQueues.get(actor.id) || Promise.resolve();
+  let releaseQueue: () => void = () => {};
+  const queuePromise = new Promise<void>((resolve) => {
+    releaseQueue = resolve;
+  });
+  userSaveQueues.set(
+    actor.id,
+    previousQueue.then(() => queuePromise).catch(() => queuePromise)
+  );
 
-    // 0. Handle deleted projects if specified
+  await previousQueue.catch(() => {});
+
+  try {
+    return await executeSaveWorkspaceDeskData(
+      db,
+      actor,
+      workspaceId,
+      data,
+      options
+    );
+  } finally {
+    releaseQueue();
+    if (userSaveQueues.get(actor.id) === queuePromise) {
+      userSaveQueues.delete(actor.id);
+    }
+  }
+}
+
+async function executeSaveWorkspaceDeskData(
+  db: PrismaClient,
+  actor: VerifiedActor,
+  workspaceId: string,
+  data: Partial<DeskData>,
+  options: SaveDeskDataOptions = {}
+): Promise<{
+  success: boolean;
+  updatedAt: string;
+  conflictReconciled?: boolean;
+  preferencesVersion?: number;
+}> {
+  return db.$transaction(async (tx) => {
+    // Row-level lock in MySQL InnoDB for cross-process/multi-worker atomicity:
+    try {
+      const rawTx = tx as unknown as {
+        $executeRaw?: (
+          strings: TemplateStringsArray,
+          ...values: unknown[]
+        ) => Promise<unknown>;
+      };
+      if (typeof rawTx.$executeRaw === "function") {
+        await rawTx.$executeRaw`SELECT id FROM profiles WHERE id = ${actor.id} FOR UPDATE`;
+      }
+    } catch {
+      // Non-MySQL or mock environments where raw queries are unsupported fall through safely
+    }
+
+    // 0. Fetch existing profile preferences & tombstones up front
+    const existingProfile = await tx.profile.findUnique({
+      where: { id: actor.id },
+      select: { preferences: true },
+    });
+    const currentPrefs =
+      (existingProfile?.preferences as unknown as ProfilePreferencesJson | null) || {};
+    const existingTombstones = currentPrefs._tombstones || {};
+
+    const deletedProjectIdsSet = new Set([
+      ...(options.deletedProjectIds || []),
+      ...(existingTombstones.projects || []),
+    ]);
+    const deletedTaskListIdsSet = new Set([
+      ...(options.deletedTaskListIds || []),
+      ...(existingTombstones.taskLists || []),
+    ]);
+    const deletedTaskIdsSet = new Set([
+      ...(options.deletedTaskIds || []),
+      ...(existingTombstones.tasks || []),
+    ]);
+    const deletedNoteIdsSet = new Set([
+      ...(options.deletedNoteIds || []),
+      ...(existingTombstones.notes || []),
+    ]);
+
+    // 0. Handle deleted projects if specified or tombstoned
     if (deletedProjectIdsSet.size > 0) {
       const deletedProjectIds = Array.from(deletedProjectIdsSet);
       // Explicitly unlink associated tasks, notes, and mind maps
@@ -694,7 +826,7 @@ export async function saveWorkspaceDeskData(
     // 3. Save Tasks if provided
     if (data.tasks && Array.isArray(data.tasks)) {
       for (const task of data.tasks) {
-        if (!task?.id || !task?.title) continue;
+        if (!task?.id || !task?.title || deletedTaskIdsSet.has(task.id)) continue;
 
         // Resolve valid taskListId
         let assignedListId: string | null = task.listId || null;
@@ -782,13 +914,13 @@ export async function saveWorkspaceDeskData(
       }
     }
 
-    // Handle deleted tasks if specified
-    if (options.deletedTaskIds && options.deletedTaskIds.length > 0) {
+    // Handle deleted tasks if specified or tombstoned
+    if (deletedTaskIdsSet.size > 0) {
       await tx.task.deleteMany({
         where: {
           workspaceId,
           userId: actor.id,
-          id: { in: options.deletedTaskIds },
+          id: { in: Array.from(deletedTaskIdsSet) },
         },
       });
     }
@@ -799,7 +931,7 @@ export async function saveWorkspaceDeskData(
 
       // Pass 1: Upsert all notes ensuring IDs exist in MySQL
       for (const note of data.notes) {
-        if (!note?.id) continue;
+        if (!note?.id || deletedNoteIdsSet.has(note.id)) continue;
         validNoteIds.add(note.id);
 
         let assignedProjectId: string | null = note.projectId || null;
@@ -869,13 +1001,13 @@ export async function saveWorkspaceDeskData(
       }
     }
 
-    // Handle deleted notes if specified
-    if (options.deletedNoteIds && options.deletedNoteIds.length > 0) {
+    // Handle deleted notes if specified or tombstoned
+    if (deletedNoteIdsSet.size > 0) {
       await tx.note.deleteMany({
         where: {
           workspaceId,
           userId: actor.id,
-          id: { in: options.deletedNoteIds },
+          id: { in: Array.from(deletedNoteIdsSet) },
         },
       });
     }
@@ -999,13 +1131,6 @@ export async function saveWorkspaceDeskData(
     }
 
     // 6. Update Profile Preferences with Conflict-Aware Reconciliation
-    const existingProfile = await tx.profile.findUnique({
-      where: { id: actor.id },
-      select: { preferences: true },
-    });
-    const currentPrefs =
-      (existingProfile?.preferences as unknown as ProfilePreferencesJson | null) || {};
-
     const reconciled = reconcileProfilePreferences(currentPrefs, data, options);
 
     await tx.profile.update({
