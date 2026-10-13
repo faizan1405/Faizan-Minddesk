@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { useCalendar } from "@/features/calendar/calendar-context";
 import { PlannerTask, TaskPriority } from "@/features/calendar/types";
-import { useDeskData } from "@/features/minddesk/store";
+import { useOptionalDeskData } from "@/features/minddesk/store";
 import {
   CheckSquare,
   Square,
@@ -40,13 +40,7 @@ export function MyTasksPanel({ currentDateStr, onScheduleTask }: MyTasksPanelPro
     removeDailyPriority,
   } = useCalendar();
 
-  let deskContext: ReturnType<typeof useDeskData> | null = null;
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    deskContext = useDeskData();
-  } catch {
-    deskContext = null;
-  }
+  const deskContext = useOptionalDeskData();
 
   const taskLists = deskContext?.data?.taskLists || [
     { id: "list-my-tasks", title: "My Tasks" },

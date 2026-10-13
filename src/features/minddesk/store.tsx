@@ -80,6 +80,10 @@ export function MindDeskProvider({ children }: { children: ReactNode }) {
   );
 }
 
+export function useOptionalDeskData(): DeskContextValue | null {
+  return useContext(DeskContext);
+}
+
 export function useDeskData() {
   const context = useContext(DeskContext);
   if (!context)

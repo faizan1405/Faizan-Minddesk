@@ -12,6 +12,10 @@ const PROTECTED_PREFIXES = [
   "/recent",
   "/search",
   "/settings",
+  "/calendar",
+  "/plan-your-day",
+  "/habits",
+  "/notifications",
 ];
 
 const GUEST_ONLY_PATHS = ["/login", "/signup", "/forgot-password"];

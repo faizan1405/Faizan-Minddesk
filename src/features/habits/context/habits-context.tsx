@@ -17,7 +17,7 @@ import type {
   RoutineSession,
 } from "../types";
 import { useCalendar } from "@/features/calendar/calendar-context";
-import { useDeskData } from "@/features/minddesk/store";
+import { useOptionalDeskData } from "@/features/minddesk/store";
 import {
   loadMindDeskStore,
   saveMindDeskStore,
@@ -97,13 +97,7 @@ const HabitsContext = createContext<HabitsContextType | null>(null);
 
 export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const calendarContext = useCalendar();
-  let deskContext: ReturnType<typeof useDeskData> | null = null;
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    deskContext = useDeskData();
-  } catch {
-    deskContext = null;
-  }
+  const deskContext = useOptionalDeskData();
 
   const [localHabits, setLocalHabits] = useState<Habit[]>(getInitialDefaultHabits);
   const [localCompletions, setLocalCompletions] = useState<HabitCompletion[]>(getInitialDefaultCompletions);

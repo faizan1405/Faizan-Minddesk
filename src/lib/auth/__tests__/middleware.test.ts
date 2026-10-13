@@ -31,6 +31,10 @@ describe("T2.2 — Route Protection & Better Auth Session Middleware", () => {
     expect(isProtectedWorkspacePath("/mind-maps/abc")).toBe(true);
     expect(isProtectedWorkspacePath("/projects")).toBe(true);
     expect(isProtectedWorkspacePath("/settings")).toBe(true);
+    expect(isProtectedWorkspacePath("/calendar")).toBe(true);
+    expect(isProtectedWorkspacePath("/plan-your-day")).toBe(true);
+    expect(isProtectedWorkspacePath("/habits")).toBe(true);
+    expect(isProtectedWorkspacePath("/notifications")).toBe(true);
     expect(isProtectedWorkspacePath("/login")).toBe(false);
 
     expect(isGuestOnlyAuthPath("/login")).toBe(true);

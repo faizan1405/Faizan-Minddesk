@@ -29,7 +29,7 @@ import {
 } from "./services/calendar-storage";
 import { expandEventsForRange } from "./services/recurrence-engine";
 import { getInitialSeedData } from "./services/calendar-defaults";
-import { useDeskData } from "@/features/minddesk/store";
+import { useOptionalDeskData } from "@/features/minddesk/store";
 import type { TaskItem } from "@/features/minddesk/types";
 import {
   addDays,
@@ -155,13 +155,7 @@ function normalizeTaskItem(task: TaskItem, dailyPlan?: DailyPlan): PlannerTask {
 
 function CalendarProviderInner({ children }: { children: React.ReactNode }) {
   // Check if rendered within MindDesk workspace
-  let deskContext: ReturnType<typeof useDeskData> | null = null;
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    deskContext = useDeskData();
-  } catch {
-    deskContext = null;
-  }
+  const deskContext = useOptionalDeskData();
 
   const [localStore, setLocalStore] = useState<MindDeskStoreData>(getInitialSeedData);
   const [isLoaded, setIsLoaded] = useState(false);
