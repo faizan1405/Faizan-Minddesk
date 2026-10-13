@@ -186,7 +186,11 @@ function createIsolatedTestDatabase(): PrismaClient {
     mindMapNode: makeModel(mindMapNodes),
     mindMapEdge: makeModel(mindMapEdges),
     $executeRaw: async () => 1,
-    $queryRaw: async () => [{ 1: 1 }],
+    $queryRaw: async (_strings: TemplateStringsArray, ...values: unknown[]) => {
+      const userId = values[0] as string;
+      const prof = profiles.get(userId);
+      return prof ? [{ preferences: prof.preferences }] : [];
+    },
     $transaction: async (fn: (tx: PrismaClient) => Promise<unknown>) => fn(mock as unknown as PrismaClient),
   } as unknown as PrismaClient;
 

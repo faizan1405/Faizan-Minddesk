@@ -626,27 +626,37 @@ async function executeSaveWorkspaceDeskData(
 }> {
   return db.$transaction(async (tx) => {
     // Row-level lock in MySQL InnoDB for cross-process/multi-worker atomicity:
+    let currentPrefs: ProfilePreferencesJson = {};
     try {
       const rawTx = tx as unknown as {
-        $executeRaw?: (
+        $queryRaw?: (
           strings: TemplateStringsArray,
           ...values: unknown[]
-        ) => Promise<unknown>;
+        ) => Promise<Array<{ preferences?: unknown }>>;
       };
-      if (typeof rawTx.$executeRaw === "function") {
-        await rawTx.$executeRaw`SELECT id FROM profiles WHERE id = ${actor.id} FOR UPDATE`;
+      if (typeof rawTx.$queryRaw === "function") {
+        const rows = await rawTx.$queryRaw`SELECT preferences FROM profiles WHERE id = ${actor.id} FOR UPDATE`;
+        if (rows && rows.length > 0 && rows[0]?.preferences) {
+          const rawPref = rows[0].preferences;
+          currentPrefs =
+            typeof rawPref === "string"
+              ? JSON.parse(rawPref)
+              : (rawPref as ProfilePreferencesJson);
+        }
       }
     } catch {
       // Non-MySQL or mock environments where raw queries are unsupported fall through safely
     }
 
-    // 0. Fetch existing profile preferences & tombstones up front
-    const existingProfile = await tx.profile.findUnique({
-      where: { id: actor.id },
-      select: { preferences: true },
-    });
-    const currentPrefs =
-      (existingProfile?.preferences as unknown as ProfilePreferencesJson | null) || {};
+    // Fallback if not populated by raw locking query (e.g. mock test environments)
+    if (!currentPrefs || Object.keys(currentPrefs).length === 0) {
+      const existingProfile = await tx.profile.findUnique({
+        where: { id: actor.id },
+        select: { preferences: true },
+      });
+      currentPrefs =
+        (existingProfile?.preferences as unknown as ProfilePreferencesJson | null) || {};
+    }
     const existingTombstones = currentPrefs._tombstones || {};
 
     const deletedProjectIdsSet = new Set([
