@@ -11,6 +11,7 @@ import {
 import { auth } from "@/lib/auth/auth";
 import {
   getAdminCredentials,
+  isAdminAuthConfigured,
   isAuthConfigured,
   isDatabaseConfigured,
   sanitizeRedirectPath,
@@ -223,6 +224,14 @@ export async function signupAction(
     };
   }
 
+  if (isAdminAuthConfigured()) {
+    return {
+      status: "error",
+      message:
+        "Public registrations are disabled. Please sign in with your configured admin credentials.",
+    };
+  }
+
   if (!isAuthConfigured()) {
     return {
       status: "error",
@@ -296,6 +305,14 @@ export async function forgotPasswordAction(
       status: "error",
       message: "Enter a valid email address.",
       fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  if (isAdminAuthConfigured()) {
+    return {
+      status: "error",
+      message:
+        "Password recovery is disabled for the static administrator account. Please update ADMIN_PASSWORD in your environment variables.",
     };
   }
 

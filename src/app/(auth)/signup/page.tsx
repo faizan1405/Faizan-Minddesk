@@ -3,7 +3,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { SignupForm } from "@/features/auth/components/signup-form";
-import { isAuthConfigured, sanitizeRedirectPath } from "@/lib/auth/env";
+import {
+  isAdminAuthConfigured,
+  isAuthConfigured,
+  sanitizeRedirectPath,
+} from "@/lib/auth/env";
 import { getVerifiedUser } from "@/lib/auth/server";
 
 export const metadata: Metadata = {
@@ -22,6 +26,14 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
 
   if (user) {
     redirect(nextPath);
+  }
+
+  if (isAdminAuthConfigured()) {
+    redirect(
+      nextPath !== "/dashboard"
+        ? `/login?next=${encodeURIComponent(nextPath)}`
+        : "/login"
+    );
   }
 
   return (

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { ForgotPasswordForm } from "@/features/auth/components/forgot-password-form";
-import { isAuthConfigured } from "@/lib/auth/env";
+import { isAdminAuthConfigured, isAuthConfigured } from "@/lib/auth/env";
 import { getVerifiedUser } from "@/lib/auth/server";
 
 export const metadata: Metadata = {
@@ -23,6 +23,10 @@ export default async function ForgotPasswordPage({
 
   if (user) {
     redirect("/dashboard");
+  }
+
+  if (isAdminAuthConfigured()) {
+    redirect("/login");
   }
 
   return (
