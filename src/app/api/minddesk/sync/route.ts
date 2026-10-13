@@ -150,12 +150,20 @@ export async function POST(req: NextRequest) {
         deletedTaskIds: body.deletedTaskIds,
         deletedNoteIds: body.deletedNoteIds,
         deletedMapIds: body.deletedMapIds,
+        deletedTaskListIds: body.deletedTaskListIds,
+        deletedProjectIds: body.deletedProjectIds,
+        deletedEventIds: body.deletedEventIds,
+        deletedHabitIds: body.deletedHabitIds,
+        deletedRoutineIds: body.deletedRoutineIds,
+        clientPreferencesVersion: body.clientPreferencesVersion,
       }
     );
 
     return NextResponse.json({
       success: true,
       updatedAt: result.updatedAt,
+      conflictReconciled: result.conflictReconciled,
+      preferencesVersion: result.preferencesVersion,
       serverTimestamp: Date.now(),
     });
   } catch (err: unknown) {

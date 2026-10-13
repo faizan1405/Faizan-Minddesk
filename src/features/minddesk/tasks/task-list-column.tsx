@@ -57,7 +57,10 @@ export interface TaskListColumnProps {
   onPromoteSubtask: (task: TaskItem, subtask: TaskSubtask) => void;
   onAddTask: (task: TaskItem) => void;
   onRenameList: (listId: string, newTitle: string) => void;
-  onDeleteList: (listId: string) => void;
+  onDeleteList: (
+    listId: string,
+    options?: { destinationListId?: string; deleteTasks?: boolean }
+  ) => void;
 }
 
 export function TaskListColumn({
@@ -84,6 +87,22 @@ export function TaskListColumn({
   const [isRenameOpen, setIsRenameOpen] = React.useState(false);
   const [renameValue, setRenameValue] = React.useState(list.title);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = React.useState(false);
+
+  const otherLists = React.useMemo(
+    () => allLists.filter((l) => l.id !== list.id),
+    [allLists, list.id]
+  );
+  const [deleteHandlingMode, setDeleteHandlingMode] = React.useState<"move" | "delete">("move");
+  const [targetDestinationListId, setTargetDestinationListId] = React.useState<string>(() => {
+    const fallback = allLists.find((l) => l.id !== list.id);
+    return fallback?.id || "";
+  });
+
+  React.useEffect(() => {
+    if (!otherLists.some((l) => l.id === targetDestinationListId)) {
+      setTargetDestinationListId(otherLists[0]?.id || "");
+    }
+  }, [otherLists, targetDestinationListId]);
 
   // Column drag-and-drop sortable hook
   const {
@@ -387,13 +406,80 @@ export function TaskListColumn({
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-        <DialogContent className="max-w-sm p-5 rounded-2xl">
+        <DialogContent className="max-w-md p-6 rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-sm font-semibold">Delete &ldquo;{list.title}&rdquo;?</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground pt-1">
-              All tasks in this list will be deleted. This action cannot be undone.
+            <DialogTitle className="text-base font-semibold">
+              Delete &ldquo;{list.title}&rdquo;?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1.5">
+              {tasks.length === 0 ? (
+                "This list is empty and will be permanently removed. This action cannot be undone."
+              ) : (
+                `This list contains ${tasks.length} ${
+                  tasks.length === 1 ? "task" : "tasks"
+                }. By default, tasks will be preserved by moving them to another list.`
+              )}
             </DialogDescription>
           </DialogHeader>
+
+          {tasks.length > 0 && otherLists.length > 0 && (
+            <div className="space-y-3 pt-2">
+              <div className="space-y-2">
+                <label className="flex items-start gap-3 rounded-xl border border-border/80 bg-accent/30 p-3 text-xs cursor-pointer transition-colors hover:bg-accent/50">
+                  <input
+                    type="radio"
+                    name={`delete-handling-${list.id}`}
+                    value="move"
+                    checked={deleteHandlingMode === "move"}
+                    onChange={() => setDeleteHandlingMode("move")}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <div className="flex-1 space-y-1.5">
+                    <span className="font-medium text-foreground">
+                      Move tasks to another list (Recommended)
+                    </span>
+                    <p className="text-[11px] text-muted-foreground">
+                      Preserves all {tasks.length} tasks and keeps your productivity data safe.
+                    </p>
+                    {deleteHandlingMode === "move" && (
+                      <select
+                        aria-label="Destination list"
+                        className="mt-1.5 w-full rounded-lg border border-input bg-card px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        value={targetDestinationListId}
+                        onChange={(e) => setTargetDestinationListId(e.target.value)}
+                      >
+                        {otherLists.map((target) => (
+                          <option key={target.id} value={target.id}>
+                            {target.title}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-xs cursor-pointer transition-colors hover:bg-destructive/10">
+                  <input
+                    type="radio"
+                    name={`delete-handling-${list.id}`}
+                    value="delete"
+                    checked={deleteHandlingMode === "delete"}
+                    onChange={() => setDeleteHandlingMode("delete")}
+                    className="mt-0.5 accent-destructive"
+                  />
+                  <div className="flex-1">
+                    <span className="font-medium text-destructive">
+                      Permanently delete all {tasks.length} tasks
+                    </span>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Both the list and its tasks will be permanently removed.
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          )}
+
           <DialogFooter className="flex gap-2 pt-4">
             <Button
               type="button"
@@ -408,7 +494,11 @@ export function TaskListColumn({
               variant="destructive"
               size="sm"
               onClick={() => {
-                onDeleteList(list.id);
+                onDeleteList(list.id, {
+                  destinationListId:
+                    deleteHandlingMode === "move" ? targetDestinationListId : undefined,
+                  deleteTasks: deleteHandlingMode === "delete",
+                });
                 setIsDeleteConfirmOpen(false);
               }}
             >

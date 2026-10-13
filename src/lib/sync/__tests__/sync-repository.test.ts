@@ -31,6 +31,9 @@ function createInMemorySyncPrisma(): PrismaClient {
       if (v !== null && typeof v === "object" && "in" in v) {
         return ((v as { in: unknown[] }).in || []).includes(row[k]);
       }
+      if (v !== null && typeof v === "object" && "notIn" in v) {
+        return !((v as { notIn: unknown[] }).notIn || []).includes(row[k]);
+      }
       return row[k] === v;
     });
   };
@@ -136,6 +139,22 @@ function createInMemorySyncPrisma(): PrismaClient {
       for (const [key, row] of Array.from(store.entries())) {
         if (matchesWhere(row, where)) {
           store.delete(key);
+          count++;
+        }
+      }
+      return { count };
+    },
+    updateMany: async ({
+      where,
+      data,
+    }: {
+      where?: Record<string, unknown>;
+      data: Record<string, unknown>;
+    }) => {
+      let count = 0;
+      for (const [key, row] of Array.from(store.entries())) {
+        if (matchesWhere(row, where)) {
+          store.set(key, { ...row, ...data, updatedAt: new Date() });
           count++;
         }
       }
@@ -418,5 +437,408 @@ describe("Hostinger MySQL Sync Repository (Cross-Device & Persistence)", () => {
     const inDb = await getWorkspaceDeskData(db, actor, workspace.id);
     expect(inDb.tasks.length).toBe(1);
     expect(inDb.notes.length).toBe(1);
+  });
+
+  it("Task List Deletion: persists list deletion to MySQL and safely moves tasks to destination list", async () => {
+    const db = createInMemorySyncPrisma();
+    const actor = { id: "user-list-test", email: "list.test@example.com" };
+    const workspace = await db.workspace.create({
+      data: { id: "ws-list-test", name: "List Test WS", ownerId: actor.id, isPersonal: true },
+    });
+    await db.profile.create({
+      data: { id: actor.id, email: actor.email, defaultWorkspaceId: workspace.id, preferences: {} },
+    });
+
+    // Create 2 task lists: "Default List" and "Work List"
+    const initialLists = [
+      { id: "list-default", title: "My Tasks", order: 0, isDefault: true },
+      { id: "list-work", title: "Work Projects", order: 1, isDefault: false },
+    ];
+    // Create 2 tasks in "list-work"
+    const initialTasks: TaskItem[] = [
+      {
+        id: "task-w1",
+        listId: "list-work",
+        title: "Work Task 1",
+        note: "",
+        due: "Today",
+        priority: "medium",
+        complete: false,
+        starred: false,
+        subtasks: [],
+      },
+      {
+        id: "task-w2",
+        listId: "list-work",
+        title: "Work Task 2",
+        note: "",
+        due: "Today",
+        priority: "high",
+        complete: false,
+        starred: true,
+        subtasks: [],
+      },
+    ];
+
+    await saveWorkspaceDeskData(db, actor, workspace.id, {
+      taskLists: initialLists,
+      tasks: initialTasks,
+    });
+
+    // Verify initial DB state
+    const loaded1 = await getWorkspaceDeskData(db, actor, workspace.id);
+    expect(loaded1.taskLists?.length).toBe(2);
+    expect(loaded1.tasks.length).toBe(2);
+
+    // Delete "list-work", safely moving tasks to "list-default"
+    const movedTasks = loaded1.tasks.map((t) => ({ ...t, listId: "list-default" }));
+    const remainingLists = loaded1.taskLists?.filter((l) => l.id !== "list-work") || [];
+
+    await saveWorkspaceDeskData(
+      db,
+      actor,
+      workspace.id,
+      {
+        taskLists: remainingLists,
+        tasks: movedTasks,
+      },
+      {
+        deletedTaskListIds: ["list-work"],
+      }
+    );
+
+    // Rehydrate (simulate page refresh or cross-device load)
+    const rehydrated = await getWorkspaceDeskData(db, actor, workspace.id);
+
+    // List is permanently gone from DB
+    expect(rehydrated.taskLists?.some((l) => l.id === "list-work")).toBe(false);
+    expect(rehydrated.taskLists?.length).toBe(1);
+    expect(rehydrated.taskLists?.[0]?.id).toBe("list-default");
+
+    // Tasks are safely preserved in "list-default"
+    expect(rehydrated.tasks.length).toBe(2);
+    expect(rehydrated.tasks.every((t) => t.listId === "list-default")).toBe(true);
+  });
+
+  it("Task List Deletion: permanently deletes tasks when explicit task deletion is specified", async () => {
+    const db = createInMemorySyncPrisma();
+    const actor = { id: "user-list-del-tasks", email: "del.tasks@example.com" };
+    const workspace = await db.workspace.create({
+      data: { id: "ws-list-del", name: "List Delete WS", ownerId: actor.id, isPersonal: true },
+    });
+    await db.profile.create({
+      data: { id: actor.id, email: actor.email, defaultWorkspaceId: workspace.id, preferences: {} },
+    });
+
+    await saveWorkspaceDeskData(db, actor, workspace.id, {
+      taskLists: [
+        { id: "list-keep", title: "Keep List", order: 0, isDefault: true },
+        { id: "list-discard", title: "Discard List", order: 1, isDefault: false },
+      ],
+      tasks: [
+        {
+          id: "task-k1",
+          listId: "list-keep",
+          title: "Keep Task",
+          note: "",
+          due: "Today",
+          priority: "low",
+          complete: false,
+          starred: false,
+          subtasks: [],
+        },
+        {
+          id: "task-d1",
+          listId: "list-discard",
+          title: "Discard Task",
+          note: "",
+          due: "Today",
+          priority: "high",
+          complete: false,
+          starred: false,
+          subtasks: [],
+        },
+      ],
+    });
+
+    // Delete list-discard and explicitly delete task-d1
+    await saveWorkspaceDeskData(
+      db,
+      actor,
+      workspace.id,
+      {
+        taskLists: [{ id: "list-keep", title: "Keep List", order: 0, isDefault: true }],
+        tasks: [
+          {
+            id: "task-k1",
+            listId: "list-keep",
+            title: "Keep Task",
+            note: "",
+            due: "Today",
+            priority: "low",
+            complete: false,
+            starred: false,
+            subtasks: [],
+          },
+        ],
+      },
+      {
+        deletedTaskListIds: ["list-discard"],
+        deletedTaskIds: ["task-d1"],
+      }
+    );
+
+    const rehydrated = await getWorkspaceDeskData(db, actor, workspace.id);
+    expect(rehydrated.taskLists?.length).toBe(1);
+    expect(rehydrated.taskLists?.[0]?.id).toBe("list-keep");
+    expect(rehydrated.tasks.length).toBe(1);
+    expect(rehydrated.tasks[0]?.id).toBe("task-k1");
+  });
+
+  it("Project Deletion: persists project deletion to MySQL, safely unlinks tasks and notes, and prevents resurrection", async () => {
+    const db = createInMemorySyncPrisma();
+    const actor = { id: "user-proj-test", email: "proj.test@example.com" };
+    const workspace = await db.workspace.create({
+      data: { id: "ws-proj-test", name: "Project Test WS", ownerId: actor.id, isPersonal: true },
+    });
+    await db.profile.create({
+      data: { id: actor.id, email: actor.email, defaultWorkspaceId: workspace.id, preferences: {} },
+    });
+
+    // Create project with linked task and linked note
+    await saveWorkspaceDeskData(db, actor, workspace.id, {
+      projects: [
+        {
+          id: "proj-alpha",
+          name: "Project Alpha",
+          description: "Top priority roadmap",
+          icon: "🚀",
+          hue: "violet",
+        },
+      ],
+      tasks: [
+        {
+          id: "task-linked-1",
+          projectId: "proj-alpha",
+          title: "Architecture Design Review",
+          note: "",
+          due: "Today",
+          priority: "high",
+          complete: false,
+          starred: true,
+          subtasks: [],
+        },
+      ],
+      notes: [
+        {
+          id: "note-linked-1",
+          projectId: "proj-alpha",
+          title: "Project Alpha Specs",
+          content: "<p>Specs documentation</p>",
+          excerpt: "Specs documentation",
+          icon: "📄",
+          updated: new Date().toISOString(),
+          starred: false,
+        },
+      ],
+    });
+
+    const beforeDelete = await getWorkspaceDeskData(db, actor, workspace.id);
+    expect(beforeDelete.projects.length).toBe(1);
+    expect(beforeDelete.tasks[0]?.projectId).toBe("proj-alpha");
+    expect(beforeDelete.notes[0]?.projectId).toBe("proj-alpha");
+
+    // Delete project with safe preservation (unlinking)
+    await saveWorkspaceDeskData(
+      db,
+      actor,
+      workspace.id,
+      {
+        projects: [],
+        tasks: [{ ...beforeDelete.tasks[0]!, projectId: undefined }],
+        notes: [{ ...beforeDelete.notes[0]!, projectId: undefined }],
+      },
+      {
+        deletedProjectIds: ["proj-alpha"],
+      }
+    );
+
+    // Verify rehydration after simulated refresh
+    const afterDelete = await getWorkspaceDeskData(db, actor, workspace.id);
+    expect(afterDelete.projects.length).toBe(0);
+    // Linked tasks and notes remain safely preserved in user workspace
+    expect(afterDelete.tasks.length).toBe(1);
+    expect(afterDelete.tasks[0]?.id).toBe("task-linked-1");
+    expect(afterDelete.tasks[0]?.projectId).toBeUndefined();
+
+    expect(afterDelete.notes.length).toBe(1);
+    expect(afterDelete.notes[0]?.id).toBe("note-linked-1");
+    expect(afterDelete.notes[0]?.projectId).toBeUndefined();
+  });
+
+  it("Cross-Device Write Conflicts: reconciles concurrent saves preserving both Session A's habit and Session B's calendar event", async () => {
+    const db = createInMemorySyncPrisma();
+    const actor = { id: "user-conflict-test", email: "conflict@example.com" };
+    const workspace = await db.workspace.create({
+      data: { id: "ws-conflict", name: "Conflict WS", ownerId: actor.id, isPersonal: true },
+    });
+    await db.profile.create({
+      data: {
+        id: actor.id,
+        email: actor.email,
+        defaultWorkspaceId: workspace.id,
+        preferences: {
+          _version: 1,
+          calendar: {
+            events: [
+              {
+                id: "evt-initial",
+                title: "Initial Team Sync",
+                date: "2026-10-14",
+                startTime: "09:00",
+                endTime: "10:00",
+                color: "blue",
+              },
+            ],
+          },
+          habits: {
+            habits: [
+              {
+                id: "habit-initial",
+                name: "Drink 2L Water",
+                targetDays: 7,
+                category: "health",
+                period: "daily",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    // Session A and Session B both fetch at version 1
+    const sessionASnapshot = await getWorkspaceDeskData(db, actor, workspace.id);
+    const sessionBSnapshot = await getWorkspaceDeskData(db, actor, workspace.id);
+    expect(sessionASnapshot.preferencesVersion).toBe(1);
+    expect(sessionBSnapshot.preferencesVersion).toBe(1);
+
+    // Step 1: Session A adds a new habit "Read 30 mins" and saves at version 1
+    const sessionANewHabit = {
+      id: "habit-session-a",
+      name: "Read 30 mins",
+      targetDays: 5,
+      category: "learning",
+      period: "daily" as const,
+    };
+    const resA = await saveWorkspaceDeskData(
+      db,
+      actor,
+      workspace.id,
+      {
+        ...sessionASnapshot,
+        habits: [...(sessionASnapshot.habits || []), sessionANewHabit],
+      },
+      { clientPreferencesVersion: 1 }
+    );
+    expect(resA.success).toBe(true);
+    expect(resA.conflictReconciled).toBe(false);
+    expect(resA.preferencesVersion).toBe(2);
+
+    // Step 2: Session B (concurrent, still holds base version 1, unaware of Session A's new habit)
+    // adds a calendar event "Dentist Appointment" and saves
+    const sessionBNewEvent = {
+      id: "evt-session-b",
+      title: "Dentist Appointment",
+      date: "2026-10-15",
+      startTime: "14:00",
+      endTime: "15:00",
+      color: "amber",
+    };
+    const resB = await saveWorkspaceDeskData(
+      db,
+      actor,
+      workspace.id,
+      {
+        ...sessionBSnapshot,
+        events: [...(sessionBSnapshot.events || []), sessionBNewEvent],
+      },
+      { clientPreferencesVersion: 1 } // Stale client version!
+    );
+
+    // Conflict was detected and safely reconciled without data loss
+    expect(resB.success).toBe(true);
+    expect(resB.conflictReconciled).toBe(true);
+    expect(resB.preferencesVersion).toBe(3);
+
+    // Step 3: Rehydrate and verify ZERO data loss
+    const rehydrated = await getWorkspaceDeskData(db, actor, workspace.id);
+
+    // Both Session A's habit AND Session B's event exist in DB!
+    const habitIds = rehydrated.habits?.map((h) => h.id) || [];
+    expect(habitIds).toContain("habit-initial");
+    expect(habitIds).toContain("habit-session-a"); // Session A's habit was NOT lost!
+
+    const eventIds = rehydrated.events?.map((e) => e.id) || [];
+    expect(eventIds).toContain("evt-initial");
+    expect(eventIds).toContain("evt-session-b"); // Session B's event was added!
+  });
+
+  it("Cross-Device Write Conflicts: merges daily plans across different dates without overwriting", async () => {
+    const db = createInMemorySyncPrisma();
+    const actor = { id: "user-planner-test", email: "planner@example.com" };
+    const workspace = await db.workspace.create({
+      data: { id: "ws-planner", name: "Planner WS", ownerId: actor.id, isPersonal: true },
+    });
+    await db.profile.create({
+      data: {
+        id: actor.id,
+        email: actor.email,
+        defaultWorkspaceId: workspace.id,
+        preferences: {
+          _version: 1,
+          planner: {
+            dailyPlans: {
+              "2026-10-13": { date: "2026-10-13", topThreeTaskIds: ["task-today"] },
+            },
+          },
+        },
+      },
+    });
+
+    // Session A updates tomorrow's plan
+    await saveWorkspaceDeskData(
+      db,
+      actor,
+      workspace.id,
+      {
+        dailyPlans: {
+          "2026-10-13": { date: "2026-10-13", topThreeTaskIds: ["task-today"] },
+          "2026-10-14": { date: "2026-10-14", topThreeTaskIds: ["task-tomorrow"] },
+        },
+      },
+      { clientPreferencesVersion: 1 }
+    );
+
+    // Session B concurrently updates next week's plan from stale version 1
+    const resB = await saveWorkspaceDeskData(
+      db,
+      actor,
+      workspace.id,
+      {
+        dailyPlans: {
+          "2026-10-13": { date: "2026-10-13", topThreeTaskIds: ["task-today"] },
+          "2026-10-20": { date: "2026-10-20", topThreeTaskIds: ["task-next-week"] },
+        },
+      },
+      { clientPreferencesVersion: 1 }
+    );
+
+    expect(resB.conflictReconciled).toBe(true);
+
+    const rehydrated = await getWorkspaceDeskData(db, actor, workspace.id);
+    // All 3 dates exist in dailyPlans!
+    expect(rehydrated.dailyPlans?.["2026-10-13"]).toBeDefined();
+    expect(rehydrated.dailyPlans?.["2026-10-14"]).toBeDefined();
+    expect(rehydrated.dailyPlans?.["2026-10-20"]).toBeDefined();
   });
 });

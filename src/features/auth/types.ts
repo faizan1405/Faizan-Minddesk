@@ -29,12 +29,15 @@ import type {
 } from "@/features/notifications/types";
 
 export interface ProfilePreferencesJson {
+  _version?: number;
+  _updatedAt?: string;
+  _sectionVersions?: Record<string, number>;
   theme?: "light" | "dark";
   calendar?: {
     events?: CalendarEvent[];
     categories?: CalendarCategory[];
     exceptions?: RecurrenceException[];
-    settings?: CalendarSettings;
+    settings?: CalendarSettings | Partial<CalendarSettings>;
   };
   planner?: {
     scheduledBlocks?: ScheduledTaskBlock[];
@@ -51,7 +54,7 @@ export interface ProfilePreferencesJson {
   };
   notifications?: {
     notifications?: NotificationRecord[];
-    preferences?: NotificationPreferences;
+    preferences?: NotificationPreferences | Partial<NotificationPreferences>;
   };
 }
 

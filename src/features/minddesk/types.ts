@@ -125,6 +125,7 @@ export interface DeskData {
   projects: ProjectItem[];
   theme: "light" | "dark";
   version?: number;
+  preferencesVersion?: number;
   events?: CalendarEvent[];
   categories?: CalendarCategory[];
   exceptions?: RecurrenceException[];

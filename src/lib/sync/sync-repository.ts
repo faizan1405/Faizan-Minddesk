@@ -16,6 +16,8 @@ import {
   type VerifiedActor,
 } from "@/lib/security/authorization";
 import type { ProfilePreferencesJson } from "@/features/auth/types";
+import type { CalendarSettings } from "@/features/calendar/types";
+import type { NotificationPreferences } from "@/features/notifications/types";
 
 export type DbClient = PrismaClient | Prisma.TransactionClient;
 
@@ -192,6 +194,7 @@ export async function getWorkspaceDeskData(
 
   return {
     version: 3,
+    preferencesVersion: prefs._version ?? 1,
     theme: prefs.theme === "dark" ? "dark" : "light",
     projects,
     taskLists,
@@ -207,7 +210,7 @@ export async function getWorkspaceDeskData(
       : [],
     calendarSettings:
       typeof prefs.calendar?.settings === "object" && prefs.calendar?.settings !== null
-        ? prefs.calendar.settings
+        ? (prefs.calendar.settings as CalendarSettings)
         : undefined,
     scheduledBlocks: Array.isArray(prefs.planner?.scheduledBlocks)
       ? prefs.planner.scheduledBlocks
@@ -234,7 +237,7 @@ export async function getWorkspaceDeskData(
       : [],
     notificationPreferences:
       typeof prefs.notifications?.preferences === "object" && prefs.notifications?.preferences !== null
-        ? prefs.notifications.preferences
+        ? (prefs.notifications.preferences as NotificationPreferences)
         : undefined,
   };
 }
@@ -243,6 +246,270 @@ export interface SaveDeskDataOptions {
   deletedTaskIds?: string[];
   deletedNoteIds?: string[];
   deletedMapIds?: string[];
+  deletedTaskListIds?: string[];
+  deletedProjectIds?: string[];
+  deletedEventIds?: string[];
+  deletedHabitIds?: string[];
+  deletedRoutineIds?: string[];
+  clientPreferencesVersion?: number;
+}
+
+/**
+ * Reconciles profile preferences during concurrent multi-session writes,
+ * ensuring newer items (calendar events, habits, routines, daily plans) are not
+ * silently overwritten by stale client state.
+ */
+export function reconcileProfilePreferences(
+  currentPrefs: ProfilePreferencesJson,
+  incomingData: Partial<DeskData>,
+  options: SaveDeskDataOptions = {}
+): {
+  preferences: ProfilePreferencesJson;
+  conflictReconciled: boolean;
+  preferencesVersion: number;
+} {
+  const currentVersion = currentPrefs._version ?? 1;
+  const clientVersion =
+    options.clientPreferencesVersion ??
+    incomingData.preferencesVersion ??
+    currentVersion;
+
+  const isConcurrentConflict = clientVersion < currentVersion;
+  const nextVersion = currentVersion + 1;
+  const nowIso = new Date().toISOString();
+
+  if (!isConcurrentConflict) {
+    const updatedPrefs: ProfilePreferencesJson = {
+      ...currentPrefs,
+      _version: nextVersion,
+      _updatedAt: nowIso,
+      ...(incomingData.theme !== undefined ? { theme: incomingData.theme } : {}),
+      calendar: {
+        ...(currentPrefs.calendar || {}),
+        ...(incomingData.events !== undefined
+          ? {
+              events: options.deletedEventIds?.length
+                ? incomingData.events.filter(
+                    (e) => !options.deletedEventIds?.includes(e.id)
+                  )
+                : incomingData.events,
+            }
+          : {}),
+        ...(incomingData.categories !== undefined
+          ? { categories: incomingData.categories }
+          : {}),
+        ...(incomingData.exceptions !== undefined
+          ? { exceptions: incomingData.exceptions }
+          : {}),
+        ...(incomingData.calendarSettings !== undefined
+          ? { settings: incomingData.calendarSettings }
+          : {}),
+      },
+      planner: {
+        ...(currentPrefs.planner || {}),
+        ...(incomingData.scheduledBlocks !== undefined
+          ? { scheduledBlocks: incomingData.scheduledBlocks }
+          : {}),
+        ...(incomingData.dailyPlans !== undefined
+          ? { dailyPlans: incomingData.dailyPlans }
+          : {}),
+      },
+      habits: {
+        ...(currentPrefs.habits || {}),
+        ...(incomingData.habits !== undefined
+          ? {
+              habits: options.deletedHabitIds?.length
+                ? incomingData.habits.filter(
+                    (h) => !options.deletedHabitIds?.includes(h.id)
+                  )
+                : incomingData.habits,
+            }
+          : {}),
+        ...(incomingData.habitCompletions !== undefined
+          ? { habitCompletions: incomingData.habitCompletions }
+          : {}),
+        ...(incomingData.habitProgressLogs !== undefined
+          ? { habitProgressLogs: incomingData.habitProgressLogs }
+          : {}),
+      },
+      routines: {
+        ...(currentPrefs.routines || {}),
+        ...(incomingData.routines !== undefined
+          ? {
+              routines: options.deletedRoutineIds?.length
+                ? incomingData.routines.filter(
+                    (r) => !options.deletedRoutineIds?.includes(r.id)
+                  )
+                : incomingData.routines,
+            }
+          : {}),
+        ...(incomingData.routineSessions !== undefined
+          ? { routineSessions: incomingData.routineSessions }
+          : {}),
+      },
+      notifications: {
+        ...(currentPrefs.notifications || {}),
+        ...(incomingData.notifications !== undefined
+          ? { notifications: incomingData.notifications }
+          : {}),
+        ...(incomingData.notificationPreferences !== undefined
+          ? { preferences: incomingData.notificationPreferences }
+          : {}),
+      },
+    };
+
+    return {
+      preferences: updatedPrefs,
+      conflictReconciled: false,
+      preferencesVersion: nextVersion,
+    };
+  }
+
+  // Conflict Detected: Reconcile concurrent writes safely to prevent data loss
+  const deletedEventIdsSet = new Set(options.deletedEventIds || []);
+  const deletedHabitIdsSet = new Set(options.deletedHabitIds || []);
+  const deletedRoutineIdsSet = new Set(options.deletedRoutineIds || []);
+
+  function reconcileEntities<T extends { id: string }>(
+    serverItems: T[] | undefined,
+    incomingItems: T[] | undefined,
+    deletedIds: Set<string>
+  ): T[] {
+    const sMap = new Map<string, T>();
+    (serverItems || []).forEach((item) => {
+      if (item?.id && !deletedIds.has(item.id)) {
+        sMap.set(item.id, item);
+      }
+    });
+
+    if (!incomingItems) {
+      return Array.from(sMap.values());
+    }
+
+    const cMap = new Map<string, T>();
+    incomingItems.forEach((item) => {
+      if (item?.id && !deletedIds.has(item.id)) {
+        cMap.set(item.id, item);
+      }
+    });
+
+    const result = new Map<string, T>(sMap);
+    cMap.forEach((item, id) => {
+      result.set(id, item);
+    });
+
+    return Array.from(result.values());
+  }
+
+  function reconcileCompletions<
+    T extends { id?: string; habitId?: string; date?: string },
+  >(serverItems: T[] | undefined, incomingItems: T[] | undefined): T[] {
+    const compMap = new Map<string, T>();
+    const getKey = (item: T) => item.id || `${item.habitId}_${item.date}`;
+    (serverItems || []).forEach((item) => {
+      const k = getKey(item);
+      if (k) compMap.set(k, item);
+    });
+    (incomingItems || []).forEach((item) => {
+      const k = getKey(item);
+      if (k) compMap.set(k, item);
+    });
+    return Array.from(compMap.values());
+  }
+
+  const reconciledPrefs: ProfilePreferencesJson = {
+    ...currentPrefs,
+    _version: nextVersion,
+    _updatedAt: nowIso,
+    theme:
+      incomingData.theme !== undefined ? incomingData.theme : currentPrefs.theme,
+    calendar: {
+      ...(currentPrefs.calendar || {}),
+      events: reconcileEntities(
+        currentPrefs.calendar?.events,
+        incomingData.events,
+        deletedEventIdsSet
+      ),
+      categories: reconcileEntities(
+        currentPrefs.calendar?.categories,
+        incomingData.categories,
+        new Set()
+      ),
+      exceptions: [
+        ...(currentPrefs.calendar?.exceptions || []),
+        ...(incomingData.exceptions || []).filter(
+          (inc) =>
+            !(currentPrefs.calendar?.exceptions || []).some(
+              (s) => s.id === inc.id
+            )
+        ),
+      ],
+      settings: {
+        ...(currentPrefs.calendar?.settings || {}),
+        ...(incomingData.calendarSettings || {}),
+      },
+    },
+    planner: {
+      ...(currentPrefs.planner || {}),
+      scheduledBlocks: reconcileEntities(
+        currentPrefs.planner?.scheduledBlocks,
+        incomingData.scheduledBlocks,
+        new Set()
+      ),
+      dailyPlans: {
+        ...(currentPrefs.planner?.dailyPlans || {}),
+        ...(incomingData.dailyPlans || {}),
+      },
+    },
+    habits: {
+      ...(currentPrefs.habits || {}),
+      habits: reconcileEntities(
+        currentPrefs.habits?.habits,
+        incomingData.habits,
+        deletedHabitIdsSet
+      ),
+      habitCompletions: reconcileCompletions(
+        currentPrefs.habits?.habitCompletions,
+        incomingData.habitCompletions
+      ),
+      habitProgressLogs: reconcileEntities(
+        currentPrefs.habits?.habitProgressLogs,
+        incomingData.habitProgressLogs,
+        new Set()
+      ),
+    },
+    routines: {
+      ...(currentPrefs.routines || {}),
+      routines: reconcileEntities(
+        currentPrefs.routines?.routines,
+        incomingData.routines,
+        deletedRoutineIdsSet
+      ),
+      routineSessions: reconcileEntities(
+        currentPrefs.routines?.routineSessions,
+        incomingData.routineSessions,
+        new Set()
+      ),
+    },
+    notifications: {
+      ...(currentPrefs.notifications || {}),
+      notifications: reconcileEntities(
+        currentPrefs.notifications?.notifications,
+        incomingData.notifications,
+        new Set()
+      ),
+      preferences: {
+        ...(currentPrefs.notifications?.preferences || {}),
+        ...(incomingData.notificationPreferences || {}),
+      },
+    },
+  };
+
+  return {
+    preferences: reconciledPrefs,
+    conflictReconciled: true,
+    preferencesVersion: nextVersion,
+  };
 }
 
 /**
@@ -255,15 +522,72 @@ export async function saveWorkspaceDeskData(
   workspaceId: string,
   data: Partial<DeskData>,
   options: SaveDeskDataOptions = {}
-): Promise<{ success: boolean; updatedAt: string }> {
+): Promise<{
+  success: boolean;
+  updatedAt: string;
+  conflictReconciled?: boolean;
+  preferencesVersion?: number;
+}> {
   await assertWorkspaceWriteAccess(db, actor, workspaceId);
 
   return db.$transaction(async (tx) => {
-    // 1. Save Projects if provided
+    const deletedProjectIdsSet = new Set(options.deletedProjectIds || []);
+    const deletedTaskListIdsSet = new Set(options.deletedTaskListIds || []);
+
+    // 0. Handle deleted projects if specified
+    if (deletedProjectIdsSet.size > 0) {
+      const deletedProjectIds = Array.from(deletedProjectIdsSet);
+      // Explicitly unlink associated tasks, notes, and mind maps
+      await tx.task.updateMany({
+        where: {
+          workspaceId,
+          userId: actor.id,
+          projectId: { in: deletedProjectIds },
+        },
+        data: { projectId: null },
+      });
+      await tx.note.updateMany({
+        where: {
+          workspaceId,
+          userId: actor.id,
+          projectId: { in: deletedProjectIds },
+        },
+        data: { projectId: null },
+      });
+      await tx.mindMap.updateMany({
+        where: {
+          workspaceId,
+          userId: actor.id,
+          projectId: { in: deletedProjectIds },
+        },
+        data: { projectId: null },
+      });
+      await tx.project.deleteMany({
+        where: {
+          workspaceId,
+          userId: actor.id,
+          id: { in: deletedProjectIds },
+        },
+      });
+    }
+
+    // 0.1 Handle deleted task lists if specified
+    if (deletedTaskListIdsSet.size > 0) {
+      const deletedTaskListIds = Array.from(deletedTaskListIdsSet);
+      await tx.taskList.deleteMany({
+        where: {
+          workspaceId,
+          userId: actor.id,
+          id: { in: deletedTaskListIds },
+        },
+      });
+    }
+
+    // 1. Save Projects if provided (skip any explicitly deleted)
     const existingProjectIds = new Set<string>();
     if (data.projects && Array.isArray(data.projects)) {
       for (const p of data.projects) {
-        if (!p?.id || !p?.name) continue;
+        if (!p?.id || !p?.name || deletedProjectIdsSet.has(p.id)) continue;
         existingProjectIds.add(p.id);
         await tx.project.upsert({
           where: {
@@ -293,11 +617,11 @@ export async function saveWorkspaceDeskData(
       }
     }
 
-    // 2. Save Task Lists if provided
+    // 2. Save Task Lists if provided (skip any explicitly deleted)
     const existingListIds = new Set<string>();
     if (data.taskLists && Array.isArray(data.taskLists)) {
       for (const tl of data.taskLists) {
-        if (!tl?.id || !tl?.title) continue;
+        if (!tl?.id || !tl?.title || deletedTaskListIdsSet.has(tl.id)) continue;
         existingListIds.add(tl.id);
         await tx.taskList.upsert({
           where: {
@@ -326,13 +650,25 @@ export async function saveWorkspaceDeskData(
 
     // Fetch existing lists and projects in DB if not all were passed
     const currentLists = await tx.taskList.findMany({
-      where: { workspaceId, userId: actor.id },
+      where: {
+        workspaceId,
+        userId: actor.id,
+        ...(deletedTaskListIdsSet.size > 0
+          ? { id: { notIn: Array.from(deletedTaskListIdsSet) } }
+          : {}),
+      },
       select: { id: true },
     });
     currentLists.forEach((l) => existingListIds.add(l.id));
 
     const currentProjects = await tx.project.findMany({
-      where: { workspaceId, userId: actor.id },
+      where: {
+        workspaceId,
+        userId: actor.id,
+        ...(deletedProjectIdsSet.size > 0
+          ? { id: { notIn: Array.from(deletedProjectIdsSet) } }
+          : {}),
+      },
       select: { id: true },
     });
     currentProjects.forEach((p) => existingProjectIds.add(p.id));
@@ -662,7 +998,7 @@ export async function saveWorkspaceDeskData(
       });
     }
 
-    // 6. Update Profile Preferences (Calendar, Planner, Habits, Routines, Notifications, Theme)
+    // 6. Update Profile Preferences with Conflict-Aware Reconciliation
     const existingProfile = await tx.profile.findUnique({
       where: { id: actor.id },
       select: { preferences: true },
@@ -670,61 +1006,18 @@ export async function saveWorkspaceDeskData(
     const currentPrefs =
       (existingProfile?.preferences as unknown as ProfilePreferencesJson | null) || {};
 
-    const updatedPrefs: ProfilePreferencesJson = {
-      ...currentPrefs,
-      ...(data.theme !== undefined ? { theme: data.theme } : {}),
-      calendar: {
-        ...(currentPrefs.calendar || {}),
-        ...(data.events !== undefined ? { events: data.events } : {}),
-        ...(data.categories !== undefined ? { categories: data.categories } : {}),
-        ...(data.exceptions !== undefined ? { exceptions: data.exceptions } : {}),
-        ...(data.calendarSettings !== undefined
-          ? { settings: data.calendarSettings }
-          : {}),
-      },
-      planner: {
-        ...(currentPrefs.planner || {}),
-        ...(data.scheduledBlocks !== undefined
-          ? { scheduledBlocks: data.scheduledBlocks }
-          : {}),
-        ...(data.dailyPlans !== undefined ? { dailyPlans: data.dailyPlans } : {}),
-      },
-      habits: {
-        ...(currentPrefs.habits || {}),
-        ...(data.habits !== undefined ? { habits: data.habits } : {}),
-        ...(data.habitCompletions !== undefined
-          ? { habitCompletions: data.habitCompletions }
-          : {}),
-        ...(data.habitProgressLogs !== undefined
-          ? { habitProgressLogs: data.habitProgressLogs }
-          : {}),
-      },
-      routines: {
-        ...(currentPrefs.routines || {}),
-        ...(data.routines !== undefined ? { routines: data.routines } : {}),
-        ...(data.routineSessions !== undefined
-          ? { routineSessions: data.routineSessions }
-          : {}),
-      },
-      notifications: {
-        ...(currentPrefs.notifications || {}),
-        ...(data.notifications !== undefined
-          ? { notifications: data.notifications }
-          : {}),
-        ...(data.notificationPreferences !== undefined
-          ? { preferences: data.notificationPreferences }
-          : {}),
-      },
-    };
+    const reconciled = reconcileProfilePreferences(currentPrefs, data, options);
 
     await tx.profile.update({
       where: { id: actor.id },
-      data: { preferences: updatedPrefs as unknown as Prisma.InputJsonValue },
+      data: { preferences: reconciled.preferences as unknown as Prisma.InputJsonValue },
     });
 
     return {
       success: true,
       updatedAt: new Date().toISOString(),
+      conflictReconciled: reconciled.conflictReconciled,
+      preferencesVersion: reconciled.preferencesVersion,
     };
   });
 }

@@ -47,7 +47,7 @@ export interface DeskContextValue {
   syncLocalDataToAccount: () => Promise<{ success: boolean; error?: string }>;
   refetchFromServer: () => Promise<void>;
   persistImmediately: () => Promise<void>;
-  registerDeletedId: (type: "task" | "note" | "map", id: string) => void;
+  registerDeletedId: (type: "task" | "note" | "map" | "taskList" | "project", id: string) => void;
   retryInitialLoad: () => void;
 }
 
@@ -83,6 +83,8 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
   const deletedTaskIdsRef = useRef<Set<string>>(new Set());
   const deletedNoteIdsRef = useRef<Set<string>>(new Set());
   const deletedMapIdsRef = useRef<Set<string>>(new Set());
+  const deletedTaskListIdsRef = useRef<Set<string>>(new Set());
+  const deletedProjectIdsRef = useRef<Set<string>>(new Set());
 
   // Sync latestDataRef whenever data changes
   latestDataRef.current = data;
@@ -96,6 +98,8 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
         deletedTaskIdsRef.current.clear();
         deletedNoteIdsRef.current.clear();
         deletedMapIdsRef.current.clear();
+        deletedTaskListIdsRef.current.clear();
+        deletedProjectIdsRef.current.clear();
         setData(initialDeskData);
         latestDataRef.current = initialDeskData;
         setHasUnsyncedLocalData(false);
@@ -122,7 +126,9 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
       const hasDeletions =
         deletedTaskIdsRef.current.size > 0 ||
         deletedNoteIdsRef.current.size > 0 ||
-        deletedMapIdsRef.current.size > 0;
+        deletedMapIdsRef.current.size > 0 ||
+        deletedTaskListIdsRef.current.size > 0 ||
+        deletedProjectIdsRef.current.size > 0;
 
       if (currentJson === lastSavedJsonRef.current && !hasDeletions) {
         useUIStore.getState().setSaveStatus("saved");
@@ -135,6 +141,8 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
       const deletedTaskIds = Array.from(deletedTaskIdsRef.current);
       const deletedNoteIds = Array.from(deletedNoteIdsRef.current);
       const deletedMapIds = Array.from(deletedMapIdsRef.current);
+      const deletedTaskListIds = Array.from(deletedTaskListIdsRef.current);
+      const deletedProjectIds = Array.from(deletedProjectIdsRef.current);
 
       try {
         const res = await fetch("/api/minddesk/sync", {
@@ -145,6 +153,9 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
             deletedTaskIds,
             deletedNoteIds,
             deletedMapIds,
+            deletedTaskListIds,
+            deletedProjectIds,
+            clientPreferencesVersion: dataToSave.preferencesVersion,
           }),
         });
 
@@ -164,6 +175,19 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
           deletedTaskIds.forEach((id) => deletedTaskIdsRef.current.delete(id));
           deletedNoteIds.forEach((id) => deletedNoteIdsRef.current.delete(id));
           deletedMapIds.forEach((id) => deletedMapIdsRef.current.delete(id));
+          deletedTaskListIds.forEach((id) => deletedTaskListIdsRef.current.delete(id));
+          deletedProjectIds.forEach((id) => deletedProjectIdsRef.current.delete(id));
+
+          if (result?.preferencesVersion) {
+            setData((curr) => ({
+              ...curr,
+              preferencesVersion: result.preferencesVersion,
+            }));
+            latestDataRef.current = {
+              ...latestDataRef.current,
+              preferencesVersion: result.preferencesVersion,
+            };
+          }
 
           lastSavedJsonRef.current = currentJson;
           useUIStore.getState().setSaveStatus("saved");
@@ -199,7 +223,14 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
     }
-    if (isUserDirtyRef.current || deletedNoteIdsRef.current.size > 0 || deletedTaskIdsRef.current.size > 0) {
+    const hasPendingDeletions =
+      deletedNoteIdsRef.current.size > 0 ||
+      deletedTaskIdsRef.current.size > 0 ||
+      deletedMapIdsRef.current.size > 0 ||
+      deletedTaskListIdsRef.current.size > 0 ||
+      deletedProjectIdsRef.current.size > 0;
+
+    if (isUserDirtyRef.current || hasPendingDeletions) {
       isUserDirtyRef.current = false;
       await persistToServer(latestDataRef.current);
     }
@@ -207,10 +238,12 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
 
   // Register deleted item ID for MySQL deletion
   const registerDeletedId = useCallback(
-    (type: "task" | "note" | "map", id: string) => {
+    (type: "task" | "note" | "map" | "taskList" | "project", id: string) => {
       if (type === "task") deletedTaskIdsRef.current.add(id);
       else if (type === "note") deletedNoteIdsRef.current.add(id);
       else if (type === "map") deletedMapIdsRef.current.add(id);
+      else if (type === "taskList") deletedTaskListIdsRef.current.add(id);
+      else if (type === "project") deletedProjectIdsRef.current.add(id);
       isUserDirtyRef.current = true;
     },
     []

@@ -4,6 +4,14 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, FolderOpen, Plus, Search, Star, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useDeskData } from "./store";
 import { MindMapCanvas } from "./mind-map-canvas";
 import type { MindMapItem, ProjectItem } from "./types";
@@ -12,12 +20,14 @@ import { NotesView } from "./notes/notes-view";
 export { NotesView };
 
 export function ProjectsView({ initialProjectId }: { initialProjectId?: string } = {}) {
-  const { data, update, selectedItem, setSelectedItem } = useDeskData();
+  const { data, update, selectedItem, setSelectedItem, registerDeletedId } = useDeskData();
   const [activeId, setActiveId] = useState<string | null>(() => {
     const candidate = initialProjectId ?? selectedItem ?? null;
     return candidate && data.projects.some((project) => project.id === candidate) ? candidate : null;
   });
   const [query, setQuery] = useState("");
+  const [projectToDelete, setProjectToDelete] = useState<ProjectItem | null>(null);
+  const [deleteHandlingMode, setDeleteHandlingMode] = useState<"preserve" | "delete">("preserve");
 
   useEffect(() => {
     const candidate = initialProjectId ?? selectedItem;
@@ -44,14 +54,175 @@ export function ProjectsView({ initialProjectId }: { initialProjectId?: string }
     setActiveId(id);
   };
 
+  const handleConfirmDeleteProject = () => {
+    if (!projectToDelete) return;
+    const targetId = projectToDelete.id;
+
+    registerDeletedId("project", targetId);
+
+    if (deleteHandlingMode === "delete") {
+      const linkedTasks = data.tasks.filter((t) => t.projectId === targetId);
+      const linkedNotes = data.notes.filter((n) => n.projectId === targetId);
+      linkedTasks.forEach((t) => registerDeletedId("task", t.id));
+      linkedNotes.forEach((n) => registerDeletedId("note", n.id));
+
+      update((current) => ({
+        ...current,
+        projects: current.projects.filter((p) => p.id !== targetId),
+        tasks: current.tasks.filter((t) => t.projectId !== targetId),
+        notes: current.notes.filter((n) => n.projectId !== targetId),
+      }));
+    } else {
+      // Safe default: preserve linked tasks and notes by unlinking them
+      update((current) => ({
+        ...current,
+        projects: current.projects.filter((p) => p.id !== targetId),
+        tasks: current.tasks.map((t) =>
+          t.projectId === targetId ? { ...t, projectId: undefined } : t
+        ),
+        notes: current.notes.map((n) =>
+          n.projectId === targetId ? { ...n, projectId: undefined } : n
+        ),
+      }));
+    }
+
+    if (activeId === targetId) {
+      setActiveId(null);
+    }
+    setProjectToDelete(null);
+    setDeleteHandlingMode("preserve");
+  };
+
+  const renderDeleteDialog = () => (
+    <Dialog
+      open={Boolean(projectToDelete)}
+      onOpenChange={(open) => {
+        if (!open) {
+          setProjectToDelete(null);
+          setDeleteHandlingMode("preserve");
+        }
+      }}
+    >
+      <DialogContent className="max-w-md p-6 rounded-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-base font-semibold">
+            Delete &ldquo;{projectToDelete?.name}&rdquo;?
+          </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground pt-1.5">
+            {(() => {
+              if (!projectToDelete) return null;
+              const pTasks = data.tasks.filter((t) => t.projectId === projectToDelete.id);
+              const pNotes = data.notes.filter((n) => n.projectId === projectToDelete.id);
+              if (pTasks.length === 0 && pNotes.length === 0) {
+                return "Are you sure you want to delete this project? This action cannot be undone.";
+              }
+              return `This project has ${pTasks.length} ${
+                pTasks.length === 1 ? "task" : "tasks"
+              } and ${pNotes.length} ${
+                pNotes.length === 1 ? "note" : "notes"
+              } associated with it.`;
+            })()}
+          </DialogDescription>
+        </DialogHeader>
+
+        {projectToDelete && (() => {
+          const pTasks = data.tasks.filter((t) => t.projectId === projectToDelete.id);
+          const pNotes = data.notes.filter((n) => n.projectId === projectToDelete.id);
+          const totalLinked = pTasks.length + pNotes.length;
+
+          if (totalLinked === 0) return null;
+
+          return (
+            <div className="space-y-3 pt-2">
+              <div className="space-y-2">
+                <label className="flex items-start gap-3 rounded-xl border border-border/80 bg-accent/30 p-3 text-xs cursor-pointer transition-colors hover:bg-accent/50">
+                  <input
+                    type="radio"
+                    name={`delete-project-mode-${projectToDelete.id}`}
+                    value="preserve"
+                    checked={deleteHandlingMode === "preserve"}
+                    onChange={() => setDeleteHandlingMode("preserve")}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <div className="flex-1 space-y-1">
+                    <span className="font-medium text-foreground">
+                      Preserve linked notes and tasks (Recommended)
+                    </span>
+                    <p className="text-[11px] text-muted-foreground leading-normal">
+                      Unlinks {pTasks.length} {pTasks.length === 1 ? "task" : "tasks"} and {pNotes.length} {pNotes.length === 1 ? "note" : "notes"} so they remain safely in your workspace.
+                    </p>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-xs cursor-pointer transition-colors hover:bg-destructive/10">
+                  <input
+                    type="radio"
+                    name={`delete-project-mode-${projectToDelete.id}`}
+                    value="delete"
+                    checked={deleteHandlingMode === "delete"}
+                    onChange={() => setDeleteHandlingMode("delete")}
+                    className="mt-0.5 accent-destructive"
+                  />
+                  <div className="flex-1">
+                    <span className="font-medium text-destructive">
+                      Permanently delete linked notes and tasks
+                    </span>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-normal">
+                      All {totalLinked} associated productivity items will be permanently removed.
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          );
+        })()}
+
+        <DialogFooter className="flex gap-2 pt-4">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setProjectToDelete(null);
+              setDeleteHandlingMode("preserve");
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            data-testid="confirm-delete-project-btn"
+            onClick={handleConfirmDeleteProject}
+          >
+            Delete project
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (activeProject) {
     const tasks = data.tasks.filter((task) => task.projectId === activeProject.id);
     const notes = data.notes.filter((note) => note.projectId === activeProject.id);
     return (
       <section className="mx-auto w-full max-w-6xl px-5 pb-20 pt-7 sm:px-8 sm:pt-10">
-        <Button variant="ghost" size="sm" className="mb-6" onClick={() => setActiveId(null)}>
-          <ChevronLeft /> Projects
-        </Button>
+        <div className="mb-6 flex items-center justify-between">
+          <Button variant="ghost" size="sm" onClick={() => setActiveId(null)}>
+            <ChevronLeft /> Projects
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive gap-1.5"
+            onClick={() => setProjectToDelete(activeProject)}
+            aria-label="Delete project"
+          >
+            <Trash2 className="size-4" />
+            <span>Delete project</span>
+          </Button>
+        </div>
         <header className="mb-8 flex items-center gap-4">
           <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-brand-soft text-2xl text-brand-ink">
             {activeProject.icon}
@@ -135,6 +306,7 @@ export function ProjectsView({ initialProjectId }: { initialProjectId?: string }
             </div>
           </div>
         </div>
+        {renderDeleteDialog()}
       </section>
     );
   }
@@ -179,35 +351,57 @@ export function ProjectsView({ initialProjectId }: { initialProjectId?: string }
             const taskCount = data.tasks.filter((task) => task.projectId === project.id && !task.complete).length;
             const noteCount = data.notes.filter((note) => note.projectId === project.id).length;
             return (
-              <button
+              <div
                 key={project.id}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    setActiveId(project.id);
+                  }
+                }}
                 onClick={() => setActiveId(project.id)}
-                className="minddesk-panel group min-h-48 p-5 text-left transition-colors hover:border-ring/50"
+                className="minddesk-panel group min-h-48 p-5 text-left transition-colors hover:border-ring/50 cursor-pointer relative"
               >
-                <span
-                  className={`mb-5 grid size-10 place-items-center rounded-xl text-lg ${
-                    project.hue === "mint"
-                      ? "bg-sage text-sage-ink"
-                      : project.hue === "amber"
-                        ? "bg-coral text-coral-ink"
-                        : project.hue === "blue"
-                          ? "bg-sky text-sky-ink"
-                          : "bg-brand-soft text-brand-ink"
-                  }`}
-                >
-                  {project.icon}
-                </span>
+                <div className="mb-5 flex items-center justify-between">
+                  <span
+                    className={`grid size-10 place-items-center rounded-xl text-lg ${
+                      project.hue === "mint"
+                        ? "bg-sage text-sage-ink"
+                        : project.hue === "amber"
+                          ? "bg-coral text-coral-ink"
+                          : project.hue === "blue"
+                            ? "bg-sky text-sky-ink"
+                            : "bg-brand-soft text-brand-ink"
+                    }`}
+                  >
+                    {project.icon}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    aria-label={`Delete project ${project.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setProjectToDelete(project);
+                    }}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
                 <span className="block text-base font-semibold">{project.name}</span>
                 <span className="mt-2 block text-sm leading-6 text-muted-foreground">{project.description}</span>
                 <span className="mt-5 flex gap-4 text-xs text-muted-foreground">
                   <span>{taskCount} open tasks</span>
                   <span>{noteCount} notes</span>
                 </span>
-              </button>
+              </div>
             );
           })}
         </div>
       )}
+      {renderDeleteDialog()}
     </section>
   );
 }

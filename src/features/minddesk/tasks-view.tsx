@@ -456,18 +456,55 @@ export function TasksView({
     }));
   }
 
-  function handleDeleteList(listId: string) {
+  function handleDeleteList(
+    listId: string,
+    options?: { destinationListId?: string; deleteTasks?: boolean }
+  ) {
     if (taskLists.length <= 1) return; // Cannot delete last remaining list
+    const deletedList = taskLists.find((l) => l.id === listId);
     const tasksInList = data.tasks.filter((t) => t.listId === listId);
-    tasksInList.forEach((t) => registerDeletedId("task", t.id));
-    update((curr) => ({
-      ...curr,
-      taskLists: (curr.taskLists || initialTaskLists).filter((l) => l.id !== listId),
-      tasks: curr.tasks.filter((t) => t.listId !== listId),
-    }));
+
+    // Register list deletion for MySQL persistence
+    registerDeletedId("taskList", listId);
+
+    if (options?.deleteTasks) {
+      // Explicit deletion requested: delete tasks and register them
+      tasksInList.forEach((t) => registerDeletedId("task", t.id));
+      update((curr) => ({
+        ...curr,
+        taskLists: (curr.taskLists || initialTaskLists).filter((l) => l.id !== listId),
+        tasks: curr.tasks.filter((t) => t.listId !== listId),
+      }));
+    } else {
+      // Safe default: preserve tasks by moving them to destination list
+      const fallbackList = taskLists.find((l) => l.id !== listId);
+      const destinationId = options?.destinationListId || fallbackList?.id || primaryListId;
+
+      update((curr) => ({
+        ...curr,
+        taskLists: (curr.taskLists || initialTaskLists).filter((l) => l.id !== listId),
+        tasks: curr.tasks.map((t) =>
+          t.listId === listId ? { ...t, listId: destinationId } : t
+        ),
+      }));
+    }
+
     if (activeView === listId) {
       setActiveView("All");
     }
+
+    setUndoAction({
+      message: `Deleted list "${deletedList?.title || "List"}"`,
+      undo: () => {
+        if (deletedList) {
+          update((curr) => ({
+            ...curr,
+            taskLists: [...(curr.taskLists || []), deletedList],
+          }));
+        }
+        setUndoAction(null);
+      },
+    });
   }
 
   function toggleExpandTask(taskId: string) {

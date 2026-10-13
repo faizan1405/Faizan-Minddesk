@@ -102,6 +102,51 @@ describe("MindDesk Cloud Sync API Routes", () => {
       expect(json.success).toBe(true);
       expect(json.updatedAt).toBeDefined();
     });
+
+    it("passes deletedTaskListIds, deletedProjectIds, and returns conflictReconciled and preferencesVersion", async () => {
+      vi.mocked(serverAuth.getVerifiedUser).mockResolvedValue({
+        id: "user-123",
+        email: "faizan@example.com",
+        fullName: "Faizan",
+        defaultWorkspaceId: "ws-123",
+      });
+
+      vi.mocked(syncRepo.saveWorkspaceDeskData).mockResolvedValue({
+        success: true,
+        updatedAt: "2026-10-13T10:00:00.000Z",
+        conflictReconciled: true,
+        preferencesVersion: 3,
+      });
+
+      const req = new NextRequest("http://localhost:3000/api/minddesk/sync", {
+        method: "POST",
+        body: JSON.stringify({
+          data: { tasks: [] },
+          deletedTaskListIds: ["list-old"],
+          deletedProjectIds: ["proj-old"],
+          clientPreferencesVersion: 1,
+        }),
+      });
+
+      const res = await postSync(req);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.conflictReconciled).toBe(true);
+      expect(json.preferencesVersion).toBe(3);
+
+      expect(syncRepo.saveWorkspaceDeskData).toHaveBeenCalledWith(
+        expect.anything(),
+        { id: "user-123", email: "faizan@example.com" },
+        "ws-123",
+        { tasks: [] },
+        expect.objectContaining({
+          deletedTaskListIds: ["list-old"],
+          deletedProjectIds: ["proj-old"],
+          clientPreferencesVersion: 1,
+        })
+      );
+    });
   });
 
   describe("POST /api/minddesk/import", () => {
