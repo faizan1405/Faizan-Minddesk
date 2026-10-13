@@ -17,13 +17,13 @@ This guide documents how to deploy **MindDesk** (Next.js 15 App Router, Prisma O
 ## 2. Step 1 — Create the Hostinger MySQL Database
 
 1. Sign in to **Hostinger hPanel** and open **Databases → Management**.
-2. Create a new MySQL database and user:
-   - **Database Name:** e.g. `u123456789_minddesk`
-   - **Database Username:** e.g. `u123456789_minddesk`
-   - **Database Password:** Generate a strong password.
+2. Locate or create your MySQL database and user. On Hostinger, the database username has a distinct system-assigned suffix and differs from the database name:
+   - **Database Name:** `u256504187_minddesk`
+   - **Database Username:** `u256504187_u987654321_min`
+   - **Database Password:** (Your assigned Hostinger MySQL user password)
 3. Construct your server-side `DATABASE_URL`:
    ```env
-   DATABASE_URL="mysql://u123456789_minddesk:YOUR_DB_PASSWORD@127.0.0.1:3306/u123456789_minddesk"
+   DATABASE_URL="mysql://u256504187_u987654321_min:YOUR_DB_PASSWORD@127.0.0.1:3306/u256504187_minddesk"
    ```
    > **Note:** When your Node.js Web App and MySQL database are hosted on the same Hostinger account, use `127.0.0.1:3306` (or `localhost:3306`). If connecting remotely from your local development machine, enable **Remote MySQL** in hPanel and use the Hostinger MySQL hostname shown in hPanel.
 
@@ -35,7 +35,7 @@ Hostinger managed plans do not always provide interactive SSH access for running
 
 ### Option A — Direct SQL Import via Hostinger phpMyAdmin (No SSH Required)
 
-1. In **Hostinger hPanel**, go to **Databases → phpMyAdmin** and click **Enter phpMyAdmin** next to your MindDesk database.
+1. In **Hostinger hPanel**, go to **Databases → phpMyAdmin** and click **Enter phpMyAdmin** next to your MindDesk database (`u256504187_minddesk`).
 2. Open the **Import** tab (or **SQL** tab).
 3. Select and upload the production migration file from this repository:
    ```text
@@ -63,10 +63,10 @@ In **Hostinger hPanel → Websites → Manage → Node.js → Environment Variab
 | Variable | Value / Description |
 | :--- | :--- |
 | `NODE_ENV` | `production` |
-| `DATABASE_URL` | `mysql://u123456789_minddesk:YOUR_PASSWORD@127.0.0.1:3306/u123456789_minddesk` |
+| `DATABASE_URL` | `mysql://u256504187_u987654321_min:YOUR_PASSWORD@127.0.0.1:3306/u256504187_minddesk` |
 | `BETTER_AUTH_SECRET` | Output of `openssl rand -base64 32` (at least 32 random characters) |
-| `BETTER_AUTH_URL` | `https://your-production-domain.com` |
-| `NEXT_PUBLIC_APP_URL` | `https://your-production-domain.com` |
+| `BETTER_AUTH_URL` | `https://minddesk.joinscaleflow.in` |
+| `NEXT_PUBLIC_APP_URL` | `https://minddesk.joinscaleflow.in` |
 | `SMTP_HOST` | `smtp.hostinger.com` |
 | `SMTP_PORT` | `465` |
 | `SMTP_SECURE` | `true` |

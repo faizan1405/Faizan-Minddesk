@@ -11,6 +11,57 @@ import { AuthorizationError } from "@/lib/security/errors";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+import crypto from "node:crypto";
+import { Prisma } from "@prisma/client";
+
+function handleSyncError(err: unknown, operation: "sync" | "save") {
+  if (err instanceof AuthorizationError) {
+    return NextResponse.json(
+      { error: err.message, code: err.code },
+      { status: err.statusCode }
+    );
+  }
+
+  const diagnosticId = `err_${crypto.randomBytes(6).toString("hex")}`;
+  let code = "INTERNAL_SERVER_ERROR";
+  let message =
+    operation === "sync"
+      ? "Unable to synchronize workspace data from server."
+      : "Unable to save workspace data to server.";
+
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    code = err.code;
+    if (err.code === "P2021") {
+      message = "Database workspace tables are not fully provisioned.";
+    } else if (err.code === "P2022") {
+      message = "Database schema column is missing.";
+    } else if (err.code === "P2003") {
+      message = "Workspace identity relationship constraint failed.";
+    } else if (err.code === "P1001" || err.code === "P1000") {
+      message = "Database server is unreachable or access was denied.";
+    }
+  } else if (err instanceof Prisma.PrismaClientInitializationError) {
+    code = "P1000";
+    message = "Database initialization error.";
+  }
+
+  // Detailed server-side diagnostic log for operator inspection
+  console.error(`[MINDDESK_${operation.toUpperCase()}_FAIL] [${diagnosticId}]`, {
+    code,
+    message: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined,
+  });
+
+  return NextResponse.json(
+    {
+      error: message,
+      code,
+      diagnosticId,
+    },
+    { status: 500 }
+  );
+}
+
 export async function GET() {
   try {
     const user = await getVerifiedUser();
@@ -53,14 +104,7 @@ export async function GET() {
       }
     );
   } catch (err: unknown) {
-    if (err instanceof AuthorizationError) {
-      return NextResponse.json(
-        { error: err.message, code: err.code },
-        { status: err.statusCode }
-      );
-    }
-    const message = err instanceof Error ? err.message : "Sync failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleSyncError(err, "sync");
   }
 }
 
@@ -115,13 +159,6 @@ export async function POST(req: NextRequest) {
       serverTimestamp: Date.now(),
     });
   } catch (err: unknown) {
-    if (err instanceof AuthorizationError) {
-      return NextResponse.json(
-        { error: err.message, code: err.code },
-        { status: err.statusCode }
-      );
-    }
-    const message = err instanceof Error ? err.message : "Save failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleSyncError(err, "save");
   }
 }

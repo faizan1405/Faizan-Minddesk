@@ -149,7 +149,13 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
         });
 
         if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+          const errorJson = await res.json().catch(() => null);
+          const diagnosticSuffix = errorJson?.diagnosticId
+            ? ` [Ref: ${errorJson.diagnosticId}]`
+            : "";
+          const errorMsg =
+            (errorJson?.error || `HTTP ${res.status}`) + diagnosticSuffix;
+          throw new Error(errorMsg);
         }
 
         const result = await res.json();
@@ -236,7 +242,14 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
       });
 
       if (!res.ok) {
-        throw new Error(`Server returned HTTP ${res.status}`);
+        const errorJson = await res.json().catch(() => null);
+        const diagnosticSuffix = errorJson?.diagnosticId
+          ? ` [Ref: ${errorJson.diagnosticId}]`
+          : "";
+        const errorMsg =
+          (errorJson?.error || `Server returned HTTP ${res.status}`) +
+          diagnosticSuffix;
+        throw new Error(errorMsg);
       }
 
       const payload = await res.json();
@@ -313,14 +326,16 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
   const update = useCallback(
     (recipe: (current: DeskData) => DeskData) => {
       isUserDirtyRef.current = true;
-      useUIStore.getState().setSaveStatus("saving");
+      if (user?.id) {
+        useUIStore.getState().setSaveStatus("saving");
+      }
       setData((current) => {
         const next = recipe(current);
         latestDataRef.current = next;
         return next;
       });
     },
-    []
+    [user?.id]
   );
 
   // 3. Theme, Local Cache, and Debounced Auto-Save

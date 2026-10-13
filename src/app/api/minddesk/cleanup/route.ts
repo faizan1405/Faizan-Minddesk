@@ -4,7 +4,6 @@ import { ensureUserWorkspaceProvisioned } from "@/lib/auth/provisioning";
 import { prisma } from "@/lib/db/prisma";
 import {
   previewUserProductivityCleanup,
-  executeUserProductivityCleanup,
 } from "@/lib/sync/cleanup-repository";
 import { AuthorizationError } from "@/lib/security/errors";
 
@@ -35,33 +34,27 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const dryRun = body?.dryRun !== false; // Default to safe dryRun
+    if (body?.dryRun === false) {
+      return NextResponse.json(
+        {
+          error:
+            "Destructive cleanup execution via API is disabled. Inspect the dry-run preview first and run the maintenance script with confirmation.",
+        },
+        { status: 403 }
+      );
+    }
 
     const actor = { id: user.id, email: user.email };
 
-    if (dryRun) {
-      const preview = await previewUserProductivityCleanup(
-        prisma,
-        actor,
-        workspaceId
-      );
-      return NextResponse.json({
-        success: true,
-        dryRun: true,
-        preview,
-      });
-    }
-
-    const result = await executeUserProductivityCleanup(
+    const preview = await previewUserProductivityCleanup(
       prisma,
       actor,
       workspaceId
     );
-
     return NextResponse.json({
       success: true,
-      dryRun: false,
-      result,
+      dryRun: true,
+      preview,
     });
   } catch (err: unknown) {
     if (err instanceof AuthorizationError) {

@@ -17,6 +17,60 @@ import { Button } from "@/components/ui/button";
 import { AlertCircle, RotateCcw } from "lucide-react";
 import type { AuthUserSummary } from "@/types/domain";
 
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+export class WorkspaceErrorBoundary extends React.Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("[WORKSPACE_CLIENT_EXCEPTION]", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-[60vh] w-full flex-col items-center justify-center p-6 text-center">
+          <div className="size-12 rounded-2xl bg-destructive/10 text-destructive grid place-items-center mb-4">
+            <AlertCircle className="size-6" />
+          </div>
+          <h2 className="text-xl font-bold tracking-tight">Something went wrong</h2>
+          <p className="mt-2 text-sm text-muted-foreground max-w-md">
+            {this.state.error?.message || "An unexpected error occurred while rendering the workspace."}
+          </p>
+          <Button
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              window.location.reload();
+            }}
+            className="mt-6 gap-2"
+            variant="outline"
+          >
+            <RotateCcw className="size-4" /> Reload Workspace
+          </Button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function ShellContent({
   children,
   user,
@@ -51,7 +105,7 @@ function ShellContent({
     );
   }
 
-  return <>{children}</>;
+  return <WorkspaceErrorBoundary>{children}</WorkspaceErrorBoundary>;
 }
 
 export interface AppShellProps {

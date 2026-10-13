@@ -585,6 +585,11 @@ export function DashboardView({
     setQuickCaptureOpen(true);
   };
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const openTasks = data.tasks.filter((task) => !task.complete);
   const todayTasks = openTasks.filter((task) => task.due !== "Tomorrow" && task.due !== "This week");
   const completed = data.tasks.filter((task) => task.complete).length;
@@ -598,14 +603,16 @@ export function DashboardView({
           <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
             <Sparkles className="size-4 text-primary" /> A new page, a little more room
           </div>
-          <h1 className="truncate text-3xl font-semibold tracking-tight sm:text-[34px]">{hello}, Faizan.</h1>
+          <h1 className="truncate text-3xl font-semibold tracking-tight sm:text-[34px]" suppressHydrationWarning>
+            {mounted ? hello : "Welcome"}, Faizan.
+          </h1>
           <p className="mt-2 text-sm text-muted-foreground">Let’s turn today’s ideas into progress.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <PlanYourDayButton size="md" />
-          <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
+          <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex" suppressHydrationWarning>
             <CalendarDays className="size-4" />
-            {new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" }).format(new Date())}
+            {mounted ? new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" }).format(new Date()) : ""}
           </div>
         </div>
       </header>

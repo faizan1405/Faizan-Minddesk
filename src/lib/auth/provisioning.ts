@@ -30,6 +30,40 @@ export async function ensureUserWorkspaceProvisioned(
     user.name?.trim() || user.email?.split("@")[0] || "MindDesk User";
 
   return db.$transaction(async (tx) => {
+    // 1. Ensure User row exists in users table first (satisfies Profile.id FK constraint)
+    if (tx.user?.findUnique) {
+      let dbUser = await tx.user.findUnique({
+        where: { id: user.id },
+        select: { id: true, name: true, image: true },
+      });
+
+      if (!dbUser && user.email) {
+        const userByEmail = await tx.user.findUnique({
+          where: { email: user.email },
+          select: { id: true, name: true, image: true },
+        });
+        if (userByEmail) {
+          user.id = userByEmail.id;
+          dbUser = userByEmail;
+        }
+      }
+
+      if (!dbUser && tx.user?.create) {
+        dbUser = await tx.user.create({
+          data: {
+            id: user.id,
+            email: user.email,
+            name: fallbackName,
+            emailVerified: true,
+            image: user.image ?? null,
+          },
+          select: { id: true, name: true, image: true },
+        });
+        user.id = dbUser.id;
+      }
+    }
+
+    // 2. Check existing profile
     const existingProfile = await tx.profile.findUnique({
       where: { id: user.id },
       select: {
@@ -41,14 +75,21 @@ export async function ensureUserWorkspaceProvisioned(
     });
 
     if (existingProfile?.defaultWorkspaceId) {
-      return {
-        profileId: existingProfile.id,
-        defaultWorkspaceId: existingProfile.defaultWorkspaceId,
-        fullName: existingProfile.fullName || fallbackName,
-        avatarUrl: existingProfile.avatarUrl ?? user.image ?? null,
-      };
+      const ws = await tx.workspace.findUnique({
+        where: { id: existingProfile.defaultWorkspaceId },
+        select: { id: true },
+      });
+      if (ws) {
+        return {
+          profileId: existingProfile.id,
+          defaultWorkspaceId: existingProfile.defaultWorkspaceId,
+          fullName: existingProfile.fullName || fallbackName,
+          avatarUrl: existingProfile.avatarUrl ?? user.image ?? null,
+        };
+      }
     }
 
+    // 3. Ensure profile row exists
     if (!existingProfile) {
       await tx.profile.create({
         data: {
@@ -61,14 +102,24 @@ export async function ensureUserWorkspaceProvisioned(
       });
     }
 
-    const workspace = await tx.workspace.create({
-      data: {
-        name: "Personal Workspace",
-        ownerId: user.id,
-        isPersonal: true,
-      },
+    // 4. Find or create personal workspace
+    let workspace = await tx.workspace.findFirst({
+      where: { ownerId: user.id, isPersonal: true },
+      select: { id: true },
     });
 
+    if (!workspace) {
+      workspace = await tx.workspace.create({
+        data: {
+          name: "Personal Workspace",
+          ownerId: user.id,
+          isPersonal: true,
+        },
+        select: { id: true },
+      });
+    }
+
+    // 5. Ensure workspace membership
     await tx.workspaceMember.upsert({
       where: {
         workspaceId_userId: {
@@ -86,6 +137,7 @@ export async function ensureUserWorkspaceProvisioned(
       },
     });
 
+    // 6. Update profile's default workspace
     const updatedProfile = await tx.profile.update({
       where: { id: user.id },
       data: {
@@ -99,15 +151,23 @@ export async function ensureUserWorkspaceProvisioned(
       },
     });
 
-    await tx.taskList.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: user.id,
-        name: "My Tasks",
-        isDefault: true,
-        position: 1000.0,
-      },
+    // 7. Ensure default "My Tasks" list exists
+    const existingList = await tx.taskList.findFirst({
+      where: { workspaceId: workspace.id, userId: user.id },
+      select: { id: true },
     });
+
+    if (!existingList) {
+      await tx.taskList.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: user.id,
+          name: "My Tasks",
+          isDefault: true,
+          position: 1000.0,
+        },
+      });
+    }
 
     return {
       profileId: updatedProfile.id,

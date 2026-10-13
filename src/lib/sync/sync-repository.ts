@@ -15,27 +15,7 @@ import {
   assertWorkspaceWriteAccess,
   type VerifiedActor,
 } from "@/lib/security/authorization";
-import { initialTaskLists } from "@/features/minddesk/seed";
-
-import type {
-  CalendarCategory,
-  CalendarEvent,
-  CalendarSettings,
-  DailyPlan,
-  RecurrenceException,
-  ScheduledTaskBlock,
-} from "@/features/calendar/types";
-import type {
-  Habit,
-  HabitCompletion,
-  HabitProgressLog,
-  Routine,
-  RoutineSession,
-} from "@/features/habits/types";
-import type {
-  NotificationPreferences,
-  NotificationRecord,
-} from "@/features/notifications/types";
+import type { ProfilePreferencesJson } from "@/features/auth/types";
 
 export type DbClient = PrismaClient | Prisma.TransactionClient;
 
@@ -62,32 +42,6 @@ interface MapMetadataJson {
   starred?: boolean;
 }
 
-interface ProfilePreferencesJson {
-  theme?: "light" | "dark";
-  calendar?: {
-    events?: CalendarEvent[];
-    categories?: CalendarCategory[];
-    exceptions?: RecurrenceException[];
-    settings?: CalendarSettings;
-  };
-  planner?: {
-    scheduledBlocks?: ScheduledTaskBlock[];
-    dailyPlans?: Record<string, DailyPlan>;
-  };
-  habits?: {
-    habits?: Habit[];
-    habitCompletions?: HabitCompletion[];
-    habitProgressLogs?: HabitProgressLog[];
-  };
-  routines?: {
-    routines?: Routine[];
-    routineSessions?: RoutineSession[];
-  };
-  notifications?: {
-    notifications?: NotificationRecord[];
-    preferences?: NotificationPreferences;
-  };
-}
 
 /**
  * Loads the complete workspace domain state from Hostinger MySQL for the
@@ -142,17 +96,14 @@ export async function getWorkspaceDeskData(
     hue: (p.color as "violet" | "mint" | "amber" | "blue") || "violet",
   }));
 
-  // 3. Map Task Lists
-  const taskLists: TaskList[] =
-    dbTaskLists.length > 0
-      ? dbTaskLists.map((tl) => ({
-          id: tl.id,
-          title: tl.name,
-          order: tl.position,
-          isDefault: tl.isDefault,
-          createdAt: tl.createdAt.toISOString(),
-        }))
-      : initialTaskLists;
+  // 3. Map Task Lists (honest workspace state, no demo fallback)
+  const taskLists: TaskList[] = dbTaskLists.map((tl) => ({
+    id: tl.id,
+    title: tl.name,
+    order: tl.position,
+    isDefault: tl.isDefault,
+    createdAt: tl.createdAt.toISOString(),
+  }));
 
   // 4. Map Tasks
   const tasks: TaskItem[] = dbTasks.map((t) => {

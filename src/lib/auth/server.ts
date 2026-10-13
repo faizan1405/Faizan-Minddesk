@@ -44,53 +44,47 @@ export async function getVerifiedUser(): Promise<AuthUserSummary | null> {
   if (admin) {
     try {
       const cookieStore = await cookies();
-      const token =
-        cookieStore.get(ADMIN_SESSION_COOKIE)?.value ||
-        cookieStore.get("better-auth.session_token")?.value;
+      const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
       const verified = verifyAdminSessionToken(token);
 
       if (verified && verified.email.toLowerCase() === admin.email) {
         if (isDatabaseConfigured()) {
           try {
-            const profile = await prisma.profile.findFirst({
+            let user = await prisma.user.findUnique({
               where: { email: admin.email },
-              select: {
-                id: true,
-                fullName: true,
-                avatarUrl: true,
-                defaultWorkspaceId: true,
-              },
+              select: { id: true, name: true, image: true },
             });
 
-            if (profile && profile.defaultWorkspaceId) {
-              return {
-                id: profile.id,
-                email: admin.email,
-                fullName: profile.fullName || "Faizan",
-                avatarUrl: profile.avatarUrl,
-                defaultWorkspaceId: profile.defaultWorkspaceId,
-              };
+            if (!user) {
+              user = await prisma.user.create({
+                data: {
+                  email: admin.email,
+                  name: "Faizan",
+                  emailVerified: true,
+                },
+                select: { id: true, name: true, image: true },
+              });
             }
 
             const provisioned = await ensureUserWorkspaceProvisioned(
               {
-                id: verified.userId,
+                id: user.id,
                 email: admin.email,
-                name: "Faizan",
-                image: null,
+                name: user.name || "Faizan",
+                image: user.image ?? null,
               },
               prisma
             );
 
             return {
-              id: verified.userId,
+              id: user.id,
               email: admin.email,
-              fullName: provisioned.fullName || "Faizan",
+              fullName: provisioned.fullName || user.name || "Faizan",
               avatarUrl: provisioned.avatarUrl,
               defaultWorkspaceId: provisioned.defaultWorkspaceId,
             };
-          } catch {
-            // DB query fallback
+          } catch (dbErr) {
+            console.error("[AUTH] Error resolving admin workspace from MySQL:", dbErr);
           }
         }
 
@@ -124,7 +118,18 @@ export async function getVerifiedUser(): Promise<AuthUserSummary | null> {
       },
     });
 
-    if (!profile || !profile.defaultWorkspaceId) {
+    let validWorkspaceId = profile?.defaultWorkspaceId;
+    if (validWorkspaceId) {
+      const ws = await prisma.workspace.findUnique({
+        where: { id: validWorkspaceId },
+        select: { id: true },
+      });
+      if (!ws) {
+        validWorkspaceId = null;
+      }
+    }
+
+    if (!profile || !validWorkspaceId) {
       const provisioned = await ensureUserWorkspaceProvisioned(
         {
           id: user.id,
@@ -152,7 +157,7 @@ export async function getVerifiedUser(): Promise<AuthUserSummary | null> {
       email: user.email,
       fullName: profile.fullName || fallbackName,
       avatarUrl: profile.avatarUrl ?? user.image ?? null,
-      defaultWorkspaceId: profile.defaultWorkspaceId,
+      defaultWorkspaceId: validWorkspaceId,
     };
   } catch {
     const fallbackName =

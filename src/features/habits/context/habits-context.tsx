@@ -161,7 +161,7 @@ export function HabitsProvider({
     if (initialHabits !== undefined) {
       return localHabits;
     }
-    if (deskData?.habits && Array.isArray(deskData.habits) && deskData.habits.length > 0) {
+    if (deskData?.habits && Array.isArray(deskData.habits)) {
       return deskData.habits;
     }
     return localHabits;
@@ -171,14 +171,14 @@ export function HabitsProvider({
     if (initialCompletions !== undefined) {
       return localCompletions;
     }
-    if (deskData?.habitCompletions && Array.isArray(deskData.habitCompletions) && deskData.habitCompletions.length > 0) {
+    if (deskData?.habitCompletions && Array.isArray(deskData.habitCompletions)) {
       return deskData.habitCompletions;
     }
     return localCompletions;
   }, [initialCompletions, deskData?.habitCompletions, localCompletions]);
 
   const habitProgressLogs = useMemo(() => {
-    if (deskData?.habitProgressLogs && Array.isArray(deskData.habitProgressLogs) && deskData.habitProgressLogs.length > 0) {
+    if (deskData?.habitProgressLogs && Array.isArray(deskData.habitProgressLogs)) {
       return deskData.habitProgressLogs;
     }
     return localProgressLogs;
@@ -188,14 +188,14 @@ export function HabitsProvider({
     if (initialRoutines !== undefined) {
       return localRoutines;
     }
-    if (deskData?.routines && Array.isArray(deskData.routines) && deskData.routines.length > 0) {
+    if (deskData?.routines && Array.isArray(deskData.routines)) {
       return deskData.routines;
     }
     return localRoutines;
   }, [initialRoutines, deskData?.routines, localRoutines]);
 
   const routineSessions = useMemo(() => {
-    if (deskData?.routineSessions && Array.isArray(deskData.routineSessions) && deskData.routineSessions.length > 0) {
+    if (deskData?.routineSessions && Array.isArray(deskData.routineSessions)) {
       return deskData.routineSessions;
     }
     return localSessions;

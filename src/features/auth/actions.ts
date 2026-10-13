@@ -99,44 +99,46 @@ export async function loginAction(
       };
     }
 
-    let userId = "admin-faizan-user";
-    if (isDatabaseConfigured()) {
-      try {
-        const user = await prisma.user.upsert({
-          where: { email: admin.email },
-          update: { name: "Faizan" },
-          create: {
-            email: admin.email,
-            name: "Faizan",
-            emailVerified: true,
-          },
-        });
-        userId = user.id;
+    if (!isDatabaseConfigured() || !isAuthConfigured()) {
+      return {
+        status: "error",
+        message: "Sign-in is temporarily unavailable. Please verify database connectivity.",
+      };
+    }
 
-        await ensureUserWorkspaceProvisioned(
-          {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            image: null,
-          },
-          prisma
-        );
-      } catch (dbErr) {
-        console.warn("DB user provisioning notice:", dbErr);
-      }
+    let userId: string;
+    try {
+      const user = await prisma.user.upsert({
+        where: { email: admin.email },
+        update: { name: "Faizan" },
+        create: {
+          email: admin.email,
+          name: "Faizan",
+          emailVerified: true,
+        },
+      });
+      userId = user.id;
+
+      await ensureUserWorkspaceProvisioned(
+        {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: null,
+        },
+        prisma
+      );
+    } catch (dbErr) {
+      console.error("[AUTH_LOGIN_PROVISIONING_FAILED]", dbErr);
+      return {
+        status: "error",
+        message: "Unable to prepare your workspace database connection. Please try again.",
+      };
     }
 
     const cookieStore = await cookies();
     const token = createAdminSessionToken(userId, admin.email);
     cookieStore.set(ADMIN_SESSION_COOKIE, token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 30 * 24 * 60 * 60,
-    });
-    cookieStore.set("better-auth.session_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
