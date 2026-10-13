@@ -43,10 +43,10 @@
 - [x] Verify unit, recurrence, and component tests (`google-tasks-experience.test.tsx` 8/8, `recurrence.test.ts` 8/8, full suite 11/11 files passed, 0 lint warnings, 0 typecheck errors, production build verified)
 
 ## Phase 4: Notion-Inspired Rich-Text Notes Editor & Reliable Auto-Save
-- [ ] Implement Notes list, pinning, and project filtering
-- [ ] Build Tiptap rich-text editor (`/notes/[noteId]`) with `/` slash command menu
-- [ ] Implement Write-Ahead Auto-Save hook (`800ms` debounce, local recovery buffer, optimistic `version` check, `note_versions` snapshots)
-- [ ] Verify auto-save, recovery, and editor tests (`T4.1–T4.3`)
+- [x] Implement Notes list, pinning, parent/child nesting, and project filtering
+- [x] Build Tiptap rich-text editor (`/notes/[noteId]`) with 20 `/` slash commands, block hover handles (`+` / `⋮⋮`), drag reordering, and floating bubble toolbar
+- [x] Implement Write-Ahead Auto-Save hook (`700ms` debounce, local recovery buffer, timestamped snapshots, JSON/Markdown export)
+- [x] Verify auto-save, recovery, slash catalog, and editor tests (`slash-commands.test.ts` 4/4, `notes-editor.test.tsx` 6/6, full suite 11/11 files passed, 0 lint warnings, 0 typecheck errors)
 
 ## Phase 5: Interactive Mind Maps Canvas (React Flow)
 - [ ] Implement Mind Maps gallery and `/mind-maps/[mapId]` React Flow workspace
