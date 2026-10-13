@@ -8,11 +8,11 @@ import {
   Circle,
   Loader2,
 } from "lucide-react";
+import { updatePasswordAction } from "@/features/auth/actions";
 import {
   INITIAL_AUTH_STATE,
-  updatePasswordAction,
   type AuthActionState,
-} from "@/features/auth/actions";
+} from "@/features/auth/types";
 import { evaluatePasswordStrength } from "@/features/auth/schemas";
 import { PasswordInput } from "@/features/auth/components/password-input";
 import { Button } from "@/components/ui/button";

@@ -3,11 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { AlertCircle, ArrowRight, Loader2 } from "lucide-react";
+import { loginAction } from "@/features/auth/actions";
 import {
   INITIAL_AUTH_STATE,
-  loginAction,
   type AuthActionState,
-} from "@/features/auth/actions";
+} from "@/features/auth/types";
 import { PasswordInput } from "@/features/auth/components/password-input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";

@@ -24,16 +24,7 @@ import { RECOVERY_TOKEN_COOKIE } from "@/lib/auth/middleware";
 import { ensureUserWorkspaceProvisioned } from "@/lib/auth/provisioning";
 import { getVerifiedSession } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
-
-export interface AuthActionState {
-  status: "idle" | "error" | "success";
-  message?: string;
-  fieldErrors?: Record<string, string[]>;
-}
-
-export const INITIAL_AUTH_STATE: AuthActionState = {
-  status: "idle",
-};
+import type { AuthActionState } from "@/features/auth/types";
 
 const NOT_CONFIGURED_MESSAGE =
   "Database and authentication are not configured yet. Add DATABASE_URL and BETTER_AUTH_SECRET to .env.local or your Hostinger environment variables.";

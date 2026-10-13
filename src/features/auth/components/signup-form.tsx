@@ -10,11 +10,11 @@ import {
   Loader2,
   MailCheck,
 } from "lucide-react";
+import { signupAction } from "@/features/auth/actions";
 import {
   INITIAL_AUTH_STATE,
-  signupAction,
   type AuthActionState,
-} from "@/features/auth/actions";
+} from "@/features/auth/types";
 import { evaluatePasswordStrength } from "@/features/auth/schemas";
 import { PasswordInput } from "@/features/auth/components/password-input";
 import { Button } from "@/components/ui/button";
