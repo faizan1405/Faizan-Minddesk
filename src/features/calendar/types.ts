@@ -49,6 +49,8 @@ export interface CalendarEvent {
   projectId?: string;
   linkedTaskId?: string;
   linkedNoteId?: string;
+  linkedHabitId?: string;
+  linkedRoutineId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -63,9 +65,34 @@ export interface ExpandedCalendarEvent extends CalendarEvent {
 
 export type CalendarViewType = "month" | "week" | "day" | "agenda";
 
+import type {
+  Habit,
+  HabitCompletion,
+  HabitProgressLog,
+  Routine,
+  RoutineSession,
+} from "@/features/habits/types";
+import type {
+  NotificationPreferences,
+  NotificationRecord,
+} from "@/features/notifications/types";
+
+export type TimeBlockType =
+  | "focus"
+  | "task"
+  | "meeting"
+  | "break"
+  | "personal"
+  | "learning"
+  | "habit"
+  | "routine";
+
 export interface ScheduledTaskBlock {
   id: string;
-  taskId: string;
+  taskId?: string;
+  habitId?: string;
+  routineId?: string;
+  routineSessionId?: string;
   title: string;
   date: string; // YYYY-MM-DD
   startTime: string; // HH:mm
@@ -74,6 +101,11 @@ export interface ScheduledTaskBlock {
   color?: string;
   completed: boolean;
   createdAt: string;
+  updatedAt?: string;
+  description?: string;
+  blockType?: TimeBlockType;
+  recurrence?: RecurrenceRule;
+  recurringSeriesId?: string;
 }
 
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
@@ -133,4 +165,11 @@ export interface MindDeskStoreData {
   maps?: unknown[];
   taskLists?: unknown[];
   theme?: "light" | "dark";
+  habits?: Habit[];
+  habitCompletions?: HabitCompletion[];
+  habitProgressLogs?: HabitProgressLog[];
+  routines?: Routine[];
+  routineSessions?: RoutineSession[];
+  notifications?: NotificationRecord[];
+  notificationPreferences?: NotificationPreferences;
 }

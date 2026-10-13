@@ -62,6 +62,16 @@ export function loadMindDeskStore(): MindDeskStoreData {
       maps: Array.isArray(parsed.maps) ? parsed.maps : undefined,
       taskLists: Array.isArray(parsed.taskLists) ? parsed.taskLists : undefined,
       theme: parsed.theme === "dark" ? "dark" : "light",
+      habits: Array.isArray(parsed.habits) ? parsed.habits : initial.habits,
+      habitCompletions: Array.isArray(parsed.habitCompletions) ? parsed.habitCompletions : initial.habitCompletions,
+      habitProgressLogs: Array.isArray(parsed.habitProgressLogs) ? parsed.habitProgressLogs : initial.habitProgressLogs,
+      routines: Array.isArray(parsed.routines) ? parsed.routines : initial.routines,
+      routineSessions: Array.isArray(parsed.routineSessions) ? parsed.routineSessions : initial.routineSessions,
+      notifications: Array.isArray(parsed.notifications) ? parsed.notifications : initial.notifications,
+      notificationPreferences:
+        typeof parsed.notificationPreferences === "object" && parsed.notificationPreferences !== null
+          ? { ...initial.notificationPreferences, ...parsed.notificationPreferences }
+          : initial.notificationPreferences,
     };
 
     return sanitized;
@@ -73,7 +83,7 @@ export function loadMindDeskStore(): MindDeskStoreData {
 
 /**
  * Saves store to localStorage non-destructively, merging with any raw existing state
- * so that maps, taskLists, notes and projects are NEVER removed or overwritten.
+ * so that maps, taskLists, notes, habits, routines and notifications are NEVER removed or overwritten.
  * Broadcasts update event for live synchronization across components and tabs.
  */
 export function saveMindDeskStore(data: MindDeskStoreData): void {
@@ -105,6 +115,13 @@ export function saveMindDeskStore(data: MindDeskStoreData): void {
       maps: data.maps ?? existingRaw.maps,
       taskLists: data.taskLists ?? existingRaw.taskLists,
       theme: data.theme ?? existingRaw.theme,
+      habits: data.habits ?? existingRaw.habits,
+      habitCompletions: data.habitCompletions ?? existingRaw.habitCompletions,
+      habitProgressLogs: data.habitProgressLogs ?? existingRaw.habitProgressLogs,
+      routines: data.routines ?? existingRaw.routines,
+      routineSessions: data.routineSessions ?? existingRaw.routineSessions,
+      notifications: data.notifications ?? existingRaw.notifications,
+      notificationPreferences: data.notificationPreferences ?? existingRaw.notificationPreferences,
     };
 
     const json = JSON.stringify(merged);
@@ -126,6 +143,28 @@ export function exportCalendarBackup(data: MindDeskStoreData): void {
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = `minddesk-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Exports habit and routine history as a dedicated JSON backup.
+ */
+export function exportHabitsAndRoutinesBackup(data: MindDeskStoreData): void {
+  const habitsData = {
+    exportedAt: new Date().toISOString(),
+    version: data.version || 3,
+    habits: data.habits || [],
+    habitCompletions: data.habitCompletions || [],
+    habitProgressLogs: data.habitProgressLogs || [],
+    routines: data.routines || [],
+    routineSessions: data.routineSessions || [],
+  };
+  const blob = new Blob([JSON.stringify(habitsData, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `minddesk-habits-routines-${new Date().toISOString().slice(0, 10)}.json`;
   anchor.click();
   URL.revokeObjectURL(url);
 }
@@ -153,6 +192,13 @@ export function importCalendarBackup(jsonString: string): MindDeskStoreData {
     maps: parsed.maps,
     taskLists: parsed.taskLists,
     theme: parsed.theme,
+    habits: Array.isArray(parsed.habits) ? parsed.habits : initial.habits,
+    habitCompletions: Array.isArray(parsed.habitCompletions) ? parsed.habitCompletions : initial.habitCompletions,
+    habitProgressLogs: Array.isArray(parsed.habitProgressLogs) ? parsed.habitProgressLogs : initial.habitProgressLogs,
+    routines: Array.isArray(parsed.routines) ? parsed.routines : initial.routines,
+    routineSessions: Array.isArray(parsed.routineSessions) ? parsed.routineSessions : initial.routineSessions,
+    notifications: Array.isArray(parsed.notifications) ? parsed.notifications : initial.notifications,
+    notificationPreferences: parsed.notificationPreferences || initial.notificationPreferences,
   };
   saveMindDeskStore(restored);
   return restored;

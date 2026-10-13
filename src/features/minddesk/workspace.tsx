@@ -29,6 +29,7 @@ import {
   Sun,
   X,
   CalendarCheck2,
+  Flame,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -37,9 +38,14 @@ import { Input } from "@/components/ui/input";
 import { useUIStore } from "@/stores/ui-store";
 import { MindDeskProvider, useDeskData } from "./store";
 import { CalendarProvider } from "@/features/calendar/calendar-context";
+import { HabitsProvider } from "@/features/habits/context/habits-context";
+import { NotificationProvider } from "@/features/notifications/context/notification-context";
 import { CalendarWorkspace } from "@/features/calendar/components/calendar-workspace";
 import { DailyPlannerWorkspace } from "@/features/planner/components/daily-planner-workspace";
 import { PlanYourDayButton } from "@/features/planner/components/plan-your-day-button";
+import { HabitsWorkspace } from "@/features/habits/components/habits-workspace";
+import { NotificationCenterWorkspace } from "@/features/notifications/components/notification-center-workspace";
+import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import { MapsView, NotesView, ProjectsView } from "./library-views";
 import { TasksView } from "./tasks-view";
 import { workspaceRoutes, workspaceTitles, type WorkspaceView } from "./workspace-types";
@@ -50,6 +56,7 @@ export const mainLinks: { id: WorkspaceView; label: string; href: string; icon: 
   { id: "tasks", label: "My tasks", href: "/tasks", icon: ListTodo },
   { id: "calendar", label: "Calendar", href: "/calendar", icon: CalendarDays },
   { id: "plan-your-day", label: "Plan your day", href: "/plan-your-day", icon: CalendarCheck2 },
+  { id: "habits", label: "Habits", href: "/habits", icon: Flame },
   { id: "notes", label: "Notes", href: "/notes", icon: FileText },
   { id: "maps", label: "Mind maps", href: "/mind-maps", icon: Map },
   { id: "projects", label: "Projects", href: "/projects", icon: LayoutGrid },
@@ -59,7 +66,11 @@ export function MindDeskWorkspace({ initialView = "home" }: { initialView?: Work
   return (
     <MindDeskProvider>
       <CalendarProvider>
-        <Workspace initialView={initialView} />
+        <HabitsProvider>
+          <NotificationProvider>
+            <Workspace initialView={initialView} />
+          </NotificationProvider>
+        </HabitsProvider>
       </CalendarProvider>
     </MindDeskProvider>
   );
@@ -301,6 +312,7 @@ function Workspace({ initialView }: { initialView: WorkspaceView }) {
           <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Search" onClick={() => setSearchOpen(true)}>
             <Search />
           </Button>
+          <NotificationBell />
           <Button
             variant="ghost"
             size="icon"
@@ -324,12 +336,16 @@ function Workspace({ initialView }: { initialView: WorkspaceView }) {
             <div className="mx-auto w-full max-w-[96rem] p-4 sm:p-6"><CalendarWorkspace /></div>
           ) : view === "plan-your-day" ? (
             <div className="mx-auto w-full max-w-[96rem] p-4 sm:p-6"><DailyPlannerWorkspace /></div>
+          ) : view === "habits" ? (
+            <div className="mx-auto w-full max-w-[96rem] p-4 sm:p-6"><HabitsWorkspace /></div>
           ) : view === "notes" ? (
             <NotesView {...(selectedItem ? { initialNoteId: selectedItem } : {})} />
           ) : view === "maps" ? (
             <MapsView {...(selectedItem ? { initialMapId: selectedItem } : {})} />
           ) : view === "projects" ? (
             <ProjectsView {...(selectedItem ? { initialProjectId: selectedItem } : {})} />
+          ) : view === "notifications" ? (
+            <div className="mx-auto w-full max-w-5xl p-4 sm:p-6"><NotificationCenterWorkspace /></div>
           ) : view === "favorites" ? (
             <FavoritesView navigate={navigate} />
           ) : view === "recent" ? (

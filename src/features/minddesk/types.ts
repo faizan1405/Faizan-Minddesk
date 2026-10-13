@@ -105,6 +105,17 @@ import type {
   RecurrenceException,
   ScheduledTaskBlock,
 } from "@/features/calendar/types";
+import type {
+  Habit,
+  HabitCompletion,
+  HabitProgressLog,
+  Routine,
+  RoutineSession,
+} from "@/features/habits/types";
+import type {
+  NotificationPreferences,
+  NotificationRecord,
+} from "@/features/notifications/types";
 
 export interface DeskData {
   tasks: TaskItem[];
@@ -120,5 +131,12 @@ export interface DeskData {
   scheduledBlocks?: ScheduledTaskBlock[];
   dailyPlans?: Record<string, DailyPlan>;
   calendarSettings?: CalendarSettings;
+  habits?: Habit[];
+  habitCompletions?: HabitCompletion[];
+  habitProgressLogs?: HabitProgressLog[];
+  routines?: Routine[];
+  routineSessions?: RoutineSession[];
+  notifications?: NotificationRecord[];
+  notificationPreferences?: NotificationPreferences;
 }
 

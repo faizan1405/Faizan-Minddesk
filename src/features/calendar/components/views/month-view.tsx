@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useCalendar } from "../../calendar-context";
-import { ExpandedCalendarEvent, PlannerTask } from "../../types";
+import { ExpandedCalendarEvent, PlannerTask, ScheduledTaskBlock } from "../../types";
 import {
   startOfMonth,
   endOfMonth,
@@ -30,6 +30,8 @@ export function MonthView({ onSelectEvent, onDateClick }: MonthViewProps) {
     settings,
     getEventsForRange,
     rescheduleEvent,
+    rescheduleTaskBlock,
+    scheduledBlocks,
     tasks,
     toggleTaskComplete,
   } = useCalendar();
@@ -103,6 +105,17 @@ export function MonthView({ onSelectEvent, onDateClick }: MonthViewProps) {
     return map;
   }, [tasks, settings.showTasksOnCalendar]);
 
+  // Scheduled task blocks by date
+  const blocksByDate = useMemo(() => {
+    const map = new Map<string, ScheduledTaskBlock[]>();
+    for (const b of scheduledBlocks) {
+      const list = map.get(b.date) || [];
+      list.push(b);
+      map.set(b.date, list);
+    }
+    return map;
+  }, [scheduledBlocks]);
+
   const weekDayHeaders = useMemo(() => {
     const week = eachDayOfInterval({
       start: calendarStart,
@@ -134,6 +147,15 @@ export function MonthView({ onSelectEvent, onDateClick }: MonthViewProps) {
     e.preventDefault();
     const eventId = e.dataTransfer.getData("text/plain") || draggedEventId;
     if (eventId) {
+      // Check if item is a scheduled block
+      const blk = scheduledBlocks.find((b) => b.id === eventId);
+      if (blk) {
+        rescheduleTaskBlock(blk.id, targetDate, blk.startTime, blk.endTime);
+        setDraggedEventId(null);
+        setDragOverDate(null);
+        return;
+      }
+
       const evt = visibleEvents.find((ev) => ev.id === eventId || ev.originalEventId === eventId);
       if (evt) {
         rescheduleEvent(evt.originalEventId || evt.id, targetDate, evt.startTime, targetDate, evt.endTime);
@@ -161,12 +183,15 @@ export function MonthView({ onSelectEvent, onDateClick }: MonthViewProps) {
           const isCurrentMonth = isSameMonth(day, selectedDate);
           const isCurrentDay = isToday(day);
           const dayEvents = eventsByDate.get(dayStr) || [];
+          const dayBlocks = blocksByDate.get(dayStr) || [];
           const dayTasks = tasksByDate.get(dayStr) || [];
-          const totalItems = dayEvents.length + dayTasks.length;
+          const totalItems = dayEvents.length + dayBlocks.length + dayTasks.length;
           const isOver = dragOverDate === dayStr;
 
           const MAX_DISPLAY = 3;
           const displayEvents = dayEvents.slice(0, MAX_DISPLAY);
+          const remainingSlotsAfterEvents = Math.max(0, MAX_DISPLAY - displayEvents.length);
+          const displayBlocks = dayBlocks.slice(0, remainingSlotsAfterEvents);
           const overflowCount = totalItems - MAX_DISPLAY;
 
           return (
@@ -201,7 +226,7 @@ export function MonthView({ onSelectEvent, onDateClick }: MonthViewProps) {
                 )}
               </div>
 
-              {/* Event & Task chips */}
+              {/* Event, Block & Task chips */}
               <div className="mt-1 flex-1 space-y-1 overflow-hidden">
                 {/* Event chips */}
                 {displayEvents.map((evt) => {
@@ -243,6 +268,30 @@ export function MonthView({ onSelectEvent, onDateClick }: MonthViewProps) {
                     </div>
                   );
                 })}
+
+                {/* Scheduled Block chips */}
+                {displayBlocks.map((block) => (
+                  <div
+                    key={block.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, block.id)}
+                    title={`Time Block: ${block.title} (${block.startTime})`}
+                    className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate transition-all cursor-pointer border ${
+                      block.completed
+                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 line-through"
+                        : "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/25 hover:bg-indigo-500/20"
+                    }`}
+                  >
+                    <span
+                      className="size-1.5 rounded-full shrink-0"
+                      style={{ backgroundColor: block.color || "#6366f1" }}
+                    />
+                    <span className="text-[9px] font-bold opacity-75 shrink-0 hidden sm:inline">
+                      {formatTimeDisplay(block.startTime, settings.timeFormat)}
+                    </span>
+                    <span className="truncate">{block.title}</span>
+                  </div>
+                ))}
 
                 {/* Task chips if slot remains */}
                 {dayEvents.length < MAX_DISPLAY &&

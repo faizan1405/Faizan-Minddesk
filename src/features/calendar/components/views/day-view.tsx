@@ -2,7 +2,7 @@
 
 import { useMemo, useEffect, useRef } from "react";
 import { useCalendar } from "../../calendar-context";
-import { ExpandedCalendarEvent } from "../../types";
+import { ExpandedCalendarEvent, ScheduledTaskBlock } from "../../types";
 import { format, isToday } from "date-fns";
 import {
   layoutOverlappingEvents,
@@ -30,6 +30,8 @@ export function DayView({ onSelectEvent, onSlotClick }: DayViewProps) {
     scheduledBlocks,
     rescheduleEvent,
     toggleTaskComplete,
+    updateTaskBlock,
+    rescheduleTaskBlock,
   } = useCalendar();
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -115,6 +117,74 @@ export function DayView({ onSelectEvent, onSlotClick }: DayViewProps) {
     window.addEventListener("mouseup", handleMouseUp);
   };
 
+  const handleBlockResizeStart = (e: React.MouseEvent, block: ScheduledTaskBlock) => {
+    e.stopPropagation();
+    const startY = e.clientY;
+    const origDuration = block.durationMinutes;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaY = moveEvent.clientY - startY;
+      const deltaMins = Math.round(((deltaY / HOUR_HEIGHT) * 60) / 15) * 15;
+      const newDuration = Math.max(15, Math.min(240, origDuration + deltaMins));
+      const [h, m] = block.startTime.split(":").map(Number);
+      const startMins = h * 60 + m;
+      const endMins = startMins + newDuration;
+      updateTaskBlock(block.id, {
+        durationMinutes: newDuration,
+        endTime: minutesToTimeString(endMins),
+      });
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleDragStart = (e: React.DragEvent, id: string, type: "event" | "block") => {
+    e.dataTransfer.setData("application/json", JSON.stringify({ id, type }));
+    e.dataTransfer.setData("text/plain", id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleSlotDrop = (e: React.DragEvent, hour: number) => {
+    e.preventDefault();
+    try {
+      const raw = e.dataTransfer.getData("application/json");
+      const parsed = raw ? JSON.parse(raw) : null;
+      const id = parsed?.id || e.dataTransfer.getData("text/plain");
+      const type = parsed?.type;
+
+      if (!id) return;
+
+      const newStartTime = `${String(hour).padStart(2, "0")}:00`;
+
+      if (type === "block" || scheduledBlocks.some((b) => b.id === id)) {
+        rescheduleTaskBlock(id, dayStr, newStartTime);
+      } else {
+        const evt = visibleEvents.find((ev) => ev.id === id || ev.originalEventId === id);
+        if (evt) {
+          const s = parseTimeToMinutes(evt.startTime, 540);
+          const end = parseTimeToMinutes(evt.endTime, s + 60);
+          const dur = end - s;
+          const endMins = hour * 60 + dur;
+          rescheduleEvent(
+            evt.originalEventId || evt.id,
+            dayStr,
+            newStartTime,
+            dayStr,
+            minutesToTimeString(endMins)
+          );
+        }
+      }
+    } catch (err) {
+      console.error("Day view drop error:", err);
+    }
+  };
+
   return (
     <div className="flex flex-col rounded-2xl border border-border bg-card text-card-foreground shadow-xs overflow-hidden select-none">
       {/* Day header banner */}
@@ -192,6 +262,11 @@ export function DayView({ onSelectEvent, onSlotClick }: DayViewProps) {
               key={hour}
               style={{ top: `${hour * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}
               onClick={() => onSlotClick(dayStr, `${String(hour).padStart(2, "0")}:00`)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(e) => handleSlotDrop(e, hour)}
               className="absolute inset-x-0 border-b border-border/60 hover:bg-muted/40 transition-colors cursor-pointer group"
             >
               <div className="absolute top-1/2 inset-x-0 border-b border-dashed border-border/30 opacity-60" />
@@ -222,6 +297,8 @@ export function DayView({ onSelectEvent, onSlotClick }: DayViewProps) {
             return (
               <div
                 key={evt.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, evt.originalEventId || evt.id, "event")}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelectEvent(evt);
@@ -287,13 +364,15 @@ export function DayView({ onSelectEvent, onSlotClick }: DayViewProps) {
             return (
               <div
                 key={block.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, block.id, "block")}
                 style={{
                   top: `${top}px`,
                   height: `${height}px`,
                   left: `${leftPercent}%`,
                   width: `${widthPercent - 1.5}%`,
                 }}
-                className={`absolute z-10 rounded-xl p-3 border shadow-xs transition-all hover:z-30 cursor-pointer overflow-hidden flex flex-col justify-between ${
+                className={`group absolute z-10 rounded-xl p-3 border shadow-xs transition-all hover:z-30 cursor-pointer overflow-hidden flex flex-col justify-between ${
                   block.completed
                     ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 line-through dark:text-emerald-400"
                     : "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
@@ -305,7 +384,11 @@ export function DayView({ onSelectEvent, onSlotClick }: DayViewProps) {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        toggleTaskComplete(block.taskId);
+                        if (block.taskId) {
+                          toggleTaskComplete(block.taskId);
+                        } else {
+                          updateTaskBlock(block.id, { completed: !block.completed });
+                        }
                       }}
                       className="cursor-pointer"
                     >
@@ -320,6 +403,14 @@ export function DayView({ onSelectEvent, onSlotClick }: DayViewProps) {
                   <p className="mt-1 text-[11px] text-muted-foreground font-medium pl-6">
                     {formatTimeDisplay(block.startTime, settings.timeFormat)} · {block.durationMinutes} min focus session
                   </p>
+                </div>
+
+                {/* Resize Handle for Scheduled Block */}
+                <div
+                  onMouseDown={(e) => handleBlockResizeStart(e, block)}
+                  className="relative z-20 h-2.5 w-full cursor-s-resize opacity-0 group-hover:opacity-100 hover:bg-primary/20 rounded-b transition-opacity flex items-center justify-center mt-1"
+                >
+                  <div className="h-0.5 w-8 rounded bg-primary/40" />
                 </div>
               </div>
             );

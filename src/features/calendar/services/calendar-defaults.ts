@@ -1,5 +1,11 @@
 import { CalendarCategory, CalendarSettings, MindDeskStoreData, CalendarEvent, PlannerTask, ScheduledTaskBlock } from "../types";
 import { format, addDays, subDays } from "date-fns";
+import {
+  getInitialDefaultHabits,
+  getInitialDefaultCompletions,
+  getInitialDefaultRoutines,
+} from "@/features/habits/services/habit-defaults";
+import { DEFAULT_NOTIFICATION_PREFERENCES } from "@/features/notifications/types";
 
 export const DEFAULT_CALENDAR_CATEGORIES: CalendarCategory[] = [
   {
@@ -369,5 +375,12 @@ export function getInitialSeedData(): MindDeskStoreData {
       { id: "note-roadmap", title: "Q4 Roadmap Strategy" },
       { id: "note-architecture", title: "Calendar Engine Design Specifications" },
     ],
+    habits: getInitialDefaultHabits(),
+    habitCompletions: getInitialDefaultCompletions(),
+    habitProgressLogs: [],
+    routines: getInitialDefaultRoutines(),
+    routineSessions: [],
+    notifications: [],
+    notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
   };
 }

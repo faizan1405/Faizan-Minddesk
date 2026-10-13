@@ -39,6 +39,9 @@ import {
   addMonths,
   subMonths,
   format,
+  parseISO,
+  isBefore,
+  isAfter,
 } from "date-fns";
 
 export interface CalendarContextType {
@@ -86,9 +89,23 @@ export interface CalendarContextType {
   toggleTaskStar: (id: string) => void;
 
   // Scheduled Task Blocks
-  scheduleTaskBlock: (taskId: string, date: string, startTime: string, durationMinutes?: number) => ScheduledTaskBlock;
+  scheduleTaskBlock: (
+    taskId?: string,
+    date?: string,
+    startTime?: string,
+    durationMinutes?: number,
+    options?: Partial<ScheduledTaskBlock>
+  ) => ScheduledTaskBlock;
   updateTaskBlock: (blockId: string, updates: Partial<ScheduledTaskBlock>) => void;
   deleteTaskBlock: (blockId: string) => void;
+  duplicateTaskBlock: (blockId: string) => ScheduledTaskBlock | null;
+  rescheduleTaskBlock: (
+    blockId: string,
+    newDate: string,
+    newStartTime: string,
+    newEndTime?: string
+  ) => void;
+  getScheduledBlocksForRange: (start: Date, end: Date) => ScheduledTaskBlock[];
 
   // Daily Plan actions
   getDailyPlan: (dateStr: string) => DailyPlan;
@@ -302,14 +319,14 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
               due: t.dueDate || t.due || "Today",
               dueTime: t.dueTime,
               priority: t.priority === "urgent" ? "high" : t.priority,
-              complete: t.completed,
-              starred: t.isStarred,
-              projectId: t.projectId || t.category,
+              complete: t.completed !== undefined ? t.completed : Boolean((t as unknown as { complete?: boolean }).complete),
+              starred: t.isStarred !== undefined ? t.isStarred : Boolean((t as unknown as { starred?: boolean }).starred),
+              projectId: t.projectId || t.category || "launch",
               listId: t.listId || "list-my-tasks",
               subtasks: t.subtasks || [],
               order: t.order ?? 0,
             })),
-            dailyPlans: next.dailyPlans,
+            dailyPlans: next.dailyPlans || {},
             calendarSettings: next.settings,
           };
         });
@@ -657,35 +674,41 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
   // Scheduled Task Blocks
   const scheduleTaskBlock = useCallback(
     (
-      taskId: string,
-      date: string,
-      startTime: string,
-      durationMinutes = 60
+      taskId?: string,
+      date = format(new Date(), "yyyy-MM-dd"),
+      startTime = "10:00",
+      durationMinutes = 60,
+      options?: Partial<ScheduledTaskBlock>
     ): ScheduledTaskBlock => {
-      const task = tasks.find((t) => t.id === taskId);
+      const task = taskId ? tasks.find((t) => t.id === taskId) : null;
       const [h, m] = startTime.split(":").map(Number);
-      const startMins = h * 60 + m;
+      const startMins = (isNaN(h) ? 10 : h) * 60 + (isNaN(m) ? 0 : m);
       const endMins = startMins + durationMinutes;
       const endHour = Math.floor(endMins / 60) % 24;
       const endMinute = endMins % 60;
-      const endTime = `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
+      const computedEndTime = `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
 
+      const now = new Date().toISOString();
       const newBlock: ScheduledTaskBlock = {
-        id: `block-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        taskId,
-        title: task ? task.title : "Focus Task Block",
+        id: options?.id || `block-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        taskId: taskId || options?.taskId,
+        title: options?.title || (task ? task.title : "Focus Work Session"),
         date,
         startTime,
-        endTime,
+        endTime: options?.endTime || computedEndTime,
         durationMinutes,
-        color: "#2563eb",
-        completed: task ? task.completed : false,
-        createdAt: new Date().toISOString(),
+        color: options?.color || (task?.priority === "urgent" ? "#ef4444" : "#2563eb"),
+        completed: options?.completed !== undefined ? options.completed : (task ? task.completed : false),
+        description: options?.description || task?.description || task?.note || "",
+        blockType: options?.blockType || "focus",
+        recurrence: options?.recurrence,
+        createdAt: now,
+        updatedAt: now,
       };
 
       updateAndPersist((prev) => ({
         ...prev,
-        scheduledBlocks: [...prev.scheduledBlocks, newBlock],
+        scheduledBlocks: [...(prev.scheduledBlocks || []), newBlock],
       }));
 
       return newBlock;
@@ -697,8 +720,8 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
     (blockId: string, updates: Partial<ScheduledTaskBlock>) => {
       updateAndPersist((prev) => ({
         ...prev,
-        scheduledBlocks: prev.scheduledBlocks.map((b) =>
-          b.id === blockId ? { ...b, ...updates } : b
+        scheduledBlocks: (prev.scheduledBlocks || []).map((b) =>
+          b.id === blockId ? { ...b, ...updates, updatedAt: new Date().toISOString() } : b
         ),
       }));
     },
@@ -709,10 +732,142 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
     (blockId: string) => {
       updateAndPersist((prev) => ({
         ...prev,
-        scheduledBlocks: prev.scheduledBlocks.filter((b) => b.id !== blockId),
+        scheduledBlocks: (prev.scheduledBlocks || []).filter((b) => b.id !== blockId),
       }));
     },
     [updateAndPersist]
+  );
+
+  const duplicateTaskBlock = useCallback(
+    (blockId: string): ScheduledTaskBlock | null => {
+      const target = scheduledBlocks.find((b) => b.id === blockId);
+      if (!target) return null;
+
+      const [h, m] = target.startTime.split(":").map(Number);
+      const nextStartMins = (h + 1) * 60 + (m || 0);
+      const nextEndMins = nextStartMins + target.durationMinutes;
+      const nextStartTime = `${String(Math.floor(nextStartMins / 60) % 24).padStart(2, "0")}:${String(nextStartMins % 60).padStart(2, "0")}`;
+      const nextEndTime = `${String(Math.floor(nextEndMins / 60) % 24).padStart(2, "0")}:${String(nextEndMins % 60).padStart(2, "0")}`;
+
+      const now = new Date().toISOString();
+      const duplicated: ScheduledTaskBlock = {
+        ...target,
+        id: `block-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        title: `${target.title} (Copy)`,
+        startTime: nextStartTime,
+        endTime: nextEndTime,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      updateAndPersist((prev) => ({
+        ...prev,
+        scheduledBlocks: [...prev.scheduledBlocks, duplicated],
+      }));
+
+      return duplicated;
+    },
+    [scheduledBlocks, updateAndPersist]
+  );
+
+  const rescheduleTaskBlock = useCallback(
+    (
+      blockId: string,
+      newDate: string,
+      newStartTime: string,
+      newEndTime?: string
+    ) => {
+      updateAndPersist((prev) => ({
+        ...prev,
+        scheduledBlocks: prev.scheduledBlocks.map((b) => {
+          if (b.id !== blockId) return b;
+          const [sh, sm] = newStartTime.split(":").map(Number);
+          const startMins = (isNaN(sh) ? 0 : sh) * 60 + (isNaN(sm) ? 0 : sm);
+          let endMins = startMins + b.durationMinutes;
+          let computedEndTime = b.endTime;
+          let newDuration = b.durationMinutes;
+
+          if (newEndTime) {
+            const [eh, em] = newEndTime.split(":").map(Number);
+            const explicitEndMins = (isNaN(eh) ? 0 : eh) * 60 + (isNaN(em) ? 0 : em);
+            if (explicitEndMins > startMins) {
+              endMins = explicitEndMins;
+              newDuration = endMins - startMins;
+              computedEndTime = newEndTime;
+            }
+          } else {
+            const endHour = Math.floor(endMins / 60) % 24;
+            const endMinute = endMins % 60;
+            computedEndTime = `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
+          }
+
+          return {
+            ...b,
+            date: newDate,
+            startTime: newStartTime,
+            endTime: computedEndTime,
+            durationMinutes: newDuration,
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+    },
+    [updateAndPersist]
+  );
+
+  const getScheduledBlocksForRange = useCallback(
+    (start: Date, end: Date): ScheduledTaskBlock[] => {
+      const result: ScheduledTaskBlock[] = [];
+      const recurringMasterBlocks: ScheduledTaskBlock[] = [];
+
+      for (const block of scheduledBlocks) {
+        if (!block.recurrence) {
+          try {
+            const bDate = parseISO(block.date);
+            if (!isAfter(bDate, end) && !isBefore(bDate, start)) {
+              result.push(block);
+            }
+          } catch {
+            result.push(block);
+          }
+        } else {
+          recurringMasterBlocks.push(block);
+        }
+      }
+
+      if (recurringMasterBlocks.length > 0) {
+        const dummyEvents: CalendarEvent[] = recurringMasterBlocks.map((b) => ({
+          id: b.id,
+          title: b.title,
+          startDate: b.date,
+          startTime: b.startTime,
+          endDate: b.date,
+          endTime: b.endTime,
+          allDay: false,
+          categoryId: "cat-focus",
+          recurrence: b.recurrence,
+          createdAt: b.createdAt,
+          updatedAt: b.updatedAt || b.createdAt,
+        }));
+
+        const expanded = expandEventsForRange(dummyEvents, exceptions, start, end);
+        for (const occ of expanded) {
+          const master = recurringMasterBlocks.find((b) => b.id === occ.originalEventId);
+          if (master) {
+            result.push({
+              ...master,
+              id: occ.isOccurrence ? `${master.id}-${occ.occurrenceDate}` : master.id,
+              date: occ.occurrenceDate || master.date,
+              startTime: occ.startTime || master.startTime,
+              endTime: occ.endTime || master.endTime,
+            });
+          }
+        }
+      }
+
+      return result;
+    },
+    [scheduledBlocks, exceptions]
   );
 
   // Daily Plan actions
@@ -734,7 +889,7 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
   const setDailyTopPriorities = useCallback(
     (dateStr: string, taskIds: string[]) => {
       updateAndPersist((prev) => {
-        const existing = prev.dailyPlans[dateStr] || {
+        const existing = (prev.dailyPlans && prev.dailyPlans[dateStr]) || {
           date: dateStr,
           topPriorityTaskIds: [],
           targetFocusMinutes: 240,
@@ -744,7 +899,7 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
         return {
           ...prev,
           dailyPlans: {
-            ...prev.dailyPlans,
+            ...(prev.dailyPlans || {}),
             [dateStr]: {
               ...existing,
               topPriorityTaskIds: taskIds.slice(0, 3), // max 3 top priorities
@@ -873,6 +1028,9 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
       scheduleTaskBlock,
       updateTaskBlock,
       deleteTaskBlock,
+      duplicateTaskBlock,
+      rescheduleTaskBlock,
+      getScheduledBlocksForRange,
       getDailyPlan,
       setDailyTopPriorities,
       addDailyPriority,
@@ -914,6 +1072,9 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
       scheduleTaskBlock,
       updateTaskBlock,
       deleteTaskBlock,
+      duplicateTaskBlock,
+      rescheduleTaskBlock,
+      getScheduledBlocksForRange,
       getDailyPlan,
       setDailyTopPriorities,
       addDailyPriority,

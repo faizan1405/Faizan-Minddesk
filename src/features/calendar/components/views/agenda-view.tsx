@@ -19,7 +19,6 @@ import {
   CheckSquare,
   Square,
   CalendarDays,
-  ChevronRight,
 } from "lucide-react";
 import { formatTimeDisplay } from "../../services/calendar-layout";
 
@@ -34,8 +33,10 @@ export function AgendaView({ onSelectEvent }: AgendaViewProps) {
     categories,
     settings,
     getEventsForRange,
+    scheduledBlocks,
     tasks,
     toggleTaskComplete,
+    updateTaskBlock,
   } = useCalendar();
 
   // Scan 14 days forward from selectedDate
@@ -84,6 +85,9 @@ export function AgendaView({ onSelectEvent }: AgendaViewProps) {
         return (a.startTime || "").localeCompare(b.startTime || "");
       });
 
+      const dayBlocks = scheduledBlocks.filter((b) => b.date === dayStr);
+      dayBlocks.sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
+
       const dayTasks = settings.showTasksOnCalendar
         ? tasks.filter((t) => t.dueDate === dayStr)
         : [];
@@ -92,11 +96,12 @@ export function AgendaView({ onSelectEvent }: AgendaViewProps) {
         day,
         dayStr,
         events: dayEvents,
+        blocks: dayBlocks,
         tasks: dayTasks,
-        isEmpty: dayEvents.length === 0 && dayTasks.length === 0,
+        isEmpty: dayEvents.length === 0 && dayBlocks.length === 0 && dayTasks.length === 0,
       };
     });
-  }, [agendaRange, visibleEvents, visibleCategoryIds, tasks, settings.showTasksOnCalendar]);
+  }, [agendaRange, visibleEvents, visibleCategoryIds, scheduledBlocks, tasks, settings.showTasksOnCalendar]);
 
   const hasAnyItems = groupedAgenda.some((g) => !g.isEmpty);
 
@@ -123,7 +128,7 @@ export function AgendaView({ onSelectEvent }: AgendaViewProps) {
       ) : (
         <div className="space-y-6">
           {groupedAgenda.map((group) => {
-            const { day, dayStr, events: dayEvents, tasks: dayTasks, isEmpty } = group;
+            const { day, dayStr, events: dayEvents, blocks: dayBlocks, tasks: dayTasks, isEmpty } = group;
             if (isEmpty) return null; // Collapse empty days
 
             const isCurrent = isToday(day);
@@ -223,11 +228,63 @@ export function AgendaView({ onSelectEvent }: AgendaViewProps) {
                             </a>
                           )}
 
-                          <ChevronRight size={15} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hidden sm:inline" />
                         </div>
                       </div>
                     );
                   })}
+
+                  {/* Scheduled Task Blocks on this day */}
+                  {dayBlocks.map((block) => (
+                    <div
+                      key={block.id}
+                      className={`flex items-center justify-between gap-3 rounded-xl border p-2.5 transition-all ${
+                        block.completed
+                          ? "border-emerald-500/20 bg-emerald-500/5 text-muted-foreground"
+                          : "border-indigo-500/25 bg-indigo-500/5 hover:bg-indigo-500/10 text-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (block.taskId) {
+                              toggleTaskComplete(block.taskId);
+                            } else {
+                              updateTaskBlock(block.id, { completed: !block.completed });
+                            }
+                          }}
+                          className="cursor-pointer shrink-0"
+                        >
+                          {block.completed ? (
+                            <CheckSquare size={16} className="text-emerald-500" />
+                          ) : (
+                            <Square size={16} className="text-primary" />
+                          )}
+                        </button>
+
+                        <div className="min-w-0">
+                          <p
+                            className={`text-xs font-bold truncate ${
+                              block.completed ? "line-through text-muted-foreground" : "text-foreground"
+                            }`}
+                          >
+                            {block.title}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+                            <Clock size={10} />
+                            <span>
+                              {formatTimeDisplay(block.startTime, settings.timeFormat)} –{" "}
+                              {formatTimeDisplay(block.endTime, settings.timeFormat)} ({block.durationMinutes}m)
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 rounded px-1.5 py-0.5 shrink-0">
+                        Focus Block
+                      </span>
+                    </div>
+                  ))}
 
                   {/* Tasks on this day */}
                   {dayTasks.map((t) => (

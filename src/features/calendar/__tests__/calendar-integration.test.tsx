@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MindDeskProvider } from "@/features/minddesk/store";
 import { CalendarProvider } from "@/features/calendar/calendar-context";
+import { HabitsProvider } from "@/features/habits/context/habits-context";
 import { CalendarWorkspace } from "@/features/calendar/components/calendar-workspace";
 import { DailyPlannerWorkspace } from "@/features/planner/components/daily-planner-workspace";
 import { STORAGE_KEY } from "@/features/calendar/services/calendar-storage";
@@ -24,7 +25,9 @@ describe("Calendar & Daily Planner Integration (Phase 5)", () => {
     render(
       <MindDeskProvider>
         <CalendarProvider>
-          <CalendarWorkspace />
+          <HabitsProvider>
+            <CalendarWorkspace />
+          </HabitsProvider>
         </CalendarProvider>
       </MindDeskProvider>
     );
@@ -97,15 +100,17 @@ describe("Calendar & Daily Planner Integration (Phase 5)", () => {
     render(
       <MindDeskProvider>
         <CalendarProvider>
-          <DailyPlannerWorkspace />
+          <HabitsProvider>
+            <DailyPlannerWorkspace />
+          </HabitsProvider>
         </CalendarProvider>
       </MindDeskProvider>
     );
 
     // Check main headers
     expect(screen.getByText("Plan Your Day")).toBeInTheDocument();
-    expect(screen.getByText(/Today's Top Priorities/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "My Tasks" })).toBeInTheDocument();
+    expect(screen.getByText(/Today's Top 3 Priorities/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Task Library" })).toBeInTheDocument();
     expect(screen.getByText("Daily Intention")).toBeInTheDocument();
 
     // Check timeline shows Today button
@@ -116,15 +121,18 @@ describe("Calendar & Daily Planner Integration (Phase 5)", () => {
     render(
       <MindDeskProvider>
         <CalendarProvider>
-          <DailyPlannerWorkspace />
+          <HabitsProvider>
+            <DailyPlannerWorkspace />
+          </HabitsProvider>
         </CalendarProvider>
       </MindDeskProvider>
     );
 
     // Verify progress card metrics are rendered
-    expect(screen.getByText("Completed")).toBeInTheDocument();
-    expect(screen.getByText("Focus Blocked")).toBeInTheDocument();
-    expect(screen.getByText("Events")).toBeInTheDocument();
+    expect(screen.getByText("Tasks")).toBeInTheDocument();
+    expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    expect(screen.getByText("Focus Work")).toBeInTheDocument();
     expect(screen.getByText("Available")).toBeInTheDocument();
+    expect(screen.getByText("Conflicts")).toBeInTheDocument();
   });
 });

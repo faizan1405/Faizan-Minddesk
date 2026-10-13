@@ -139,6 +139,13 @@ export function migrateDeskData(candidate: DeskData): DeskData {
     scheduledBlocks: candidate.scheduledBlocks,
     dailyPlans: candidate.dailyPlans,
     calendarSettings: candidate.calendarSettings,
+    habits: candidate.habits,
+    habitCompletions: candidate.habitCompletions,
+    habitProgressLogs: candidate.habitProgressLogs,
+    routines: candidate.routines,
+    routineSessions: candidate.routineSessions,
+    notifications: candidate.notifications,
+    notificationPreferences: candidate.notificationPreferences,
   };
 }
 

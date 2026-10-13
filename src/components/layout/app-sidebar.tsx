@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Clock,
   FileText,
+  Flame,
   Focus,
   Home,
   LayoutGrid,
@@ -58,6 +59,12 @@ export const PRIMARY_NAV_ITEMS: NavItemConfig[] = [
     icon: CalendarCheck2,
   },
   {
+    id: "habits",
+    title: "Habits",
+    href: "/habits",
+    icon: Flame,
+  },
+  {
     id: "notes",
     title: "Notes",
     href: "/notes",
@@ -95,6 +102,12 @@ export const MOBILE_NAV_ITEMS: NavItemConfig[] = [
     title: "Calendar",
     href: "/calendar",
     icon: CalendarDays,
+  },
+  {
+    id: "habits",
+    title: "Habits",
+    href: "/habits",
+    icon: Flame,
   },
   {
     id: "notes",

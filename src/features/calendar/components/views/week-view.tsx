@@ -36,6 +36,9 @@ export function WeekView({ onSelectEvent, onSelectBlock, onSlotClick }: WeekView
     getEventsForRange,
     scheduledBlocks,
     rescheduleEvent,
+    rescheduleTaskBlock,
+    updateTaskBlock,
+    toggleTaskComplete,
   } = useCalendar();
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -124,6 +127,26 @@ export function WeekView({ onSelectEvent, onSelectBlock, onSlotClick }: WeekView
     const eventId = e.dataTransfer.getData("text/plain") || draggedEventId;
     if (!eventId) return;
 
+    // Check if dragged item is a scheduled block
+    const blk = scheduledBlocks.find((b) => b.id === eventId);
+    if (blk) {
+      const origStartMins = parseTimeToMinutes(blk.startTime, 9 * 60);
+      const origEndMins = parseTimeToMinutes(blk.endTime, origStartMins + blk.durationMinutes);
+      const duration = origEndMins - origStartMins;
+
+      const newStartMins = hour * 60;
+      const newEndMins = newStartMins + duration;
+
+      rescheduleTaskBlock(
+        blk.id,
+        dayStr,
+        minutesToTimeString(newStartMins),
+        minutesToTimeString(newEndMins)
+      );
+      setDraggedEventId(null);
+      return;
+    }
+
     const evt = visibleEvents.find((ev) => ev.id === eventId || ev.originalEventId === eventId);
     if (evt) {
       const origStartMins = parseTimeToMinutes(evt.startTime, 9 * 60);
@@ -142,6 +165,33 @@ export function WeekView({ onSelectEvent, onSelectBlock, onSlotClick }: WeekView
       );
     }
     setDraggedEventId(null);
+  };
+
+  const handleBlockResizeStart = (e: React.MouseEvent, block: ScheduledTaskBlock) => {
+    e.stopPropagation();
+    const startY = e.clientY;
+    const origDuration = block.durationMinutes;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaY = moveEvent.clientY - startY;
+      const deltaMins = Math.round(((deltaY / HOUR_HEIGHT) * 60) / 15) * 15;
+      const newDuration = Math.max(15, Math.min(240, origDuration + deltaMins));
+      const [h, m] = block.startTime.split(":").map(Number);
+      const startMins = h * 60 + m;
+      const endMins = startMins + newDuration;
+      updateTaskBlock(block.id, {
+        durationMinutes: newDuration,
+        endTime: minutesToTimeString(endMins),
+      });
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
   };
 
   // Resize handler: drag on bottom handle
@@ -361,6 +411,8 @@ export function WeekView({ onSelectEvent, onSelectBlock, onSlotClick }: WeekView
                 return (
                   <div
                     key={block.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, block.id)}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (onSelectBlock) onSelectBlock(block);
@@ -371,7 +423,7 @@ export function WeekView({ onSelectEvent, onSelectBlock, onSlotClick }: WeekView
                       left: `${leftPercent}%`,
                       width: `${widthPercent - 1}%`,
                     }}
-                    className={`absolute z-10 rounded-lg p-1.5 text-xs border shadow-2xs transition-all hover:z-30 cursor-pointer overflow-hidden flex flex-col justify-between ${
+                    className={`group absolute z-10 rounded-lg p-1.5 text-xs border shadow-2xs transition-all hover:z-30 cursor-pointer overflow-hidden flex flex-col justify-between ${
                       block.completed
                         ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 line-through dark:text-emerald-400"
                         : "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
@@ -379,16 +431,37 @@ export function WeekView({ onSelectEvent, onSelectBlock, onSlotClick }: WeekView
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-1 font-bold text-[11px] truncate">
-                        {block.completed ? (
-                          <CheckSquare size={12} className="text-emerald-600 shrink-0" />
-                        ) : (
-                          <Square size={12} className="text-primary shrink-0" />
-                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (block.taskId) {
+                              toggleTaskComplete(block.taskId);
+                            } else {
+                              updateTaskBlock(block.id, { completed: !block.completed });
+                            }
+                          }}
+                          className="cursor-pointer shrink-0"
+                        >
+                          {block.completed ? (
+                            <CheckSquare size={12} className="text-emerald-600" />
+                          ) : (
+                            <Square size={12} className="text-primary" />
+                          )}
+                        </button>
                         <span className="truncate">{block.title}</span>
                       </div>
                       <p className="text-[10px] text-muted-foreground font-medium">
                         {formatTimeDisplay(block.startTime, settings.timeFormat)} ({block.durationMinutes}m)
                       </p>
+                    </div>
+
+                    {/* Resize handle at bottom */}
+                    <div
+                      onMouseDown={(e) => handleBlockResizeStart(e, block)}
+                      className="relative z-20 h-1.5 w-full cursor-s-resize opacity-0 group-hover:opacity-100 hover:bg-primary/30 rounded-b transition-opacity flex items-center justify-center"
+                    >
+                      <div className="h-0.5 w-4 rounded bg-primary/40" />
                     </div>
                   </div>
                 );

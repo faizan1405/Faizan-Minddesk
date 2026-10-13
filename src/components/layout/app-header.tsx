@@ -13,6 +13,8 @@ import {
 } from "@/features/minddesk/workspace-types";
 import { PlanYourDayButton } from "@/features/planner/components/plan-your-day-button";
 
+import { NotificationBell } from "@/features/notifications/components/notification-bell";
+
 export function AppHeader() {
   const pathname = usePathname() || "/dashboard";
   const { data, update } = useDeskData();
@@ -84,6 +86,8 @@ export function AppHeader() {
       >
         <Search />
       </Button>
+
+      <NotificationBell />
 
       <Button
         variant="ghost"
