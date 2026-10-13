@@ -32,11 +32,15 @@
 - [x] Verify route protection, auth validation, MySQL schema DDL, and two-user authorization/IDOR tests (`T2.1–T2.4B` passed locally; `T2.4C` live MySQL integration test ready and awaiting `DATABASE_URL` credentials)
 
 ## Phase 3: Projects Organization & Google Tasks-Inspired Task Manager
-- [ ] Implement Projects CRUD and sidebar/page filters
-- [ ] Implement Tasks CRUD (quick-add bar, completion toggle, due dates, priority, subtasks)
-- [ ] Implement `@dnd-kit/sortable` drag-and-drop task reordering with fractional indexing
-- [ ] Implement roll-forward task recurrence engine (`daily`, `weekly`, `monthly`)
-- [ ] Verify unit and component tests (`T3.1–T3.3`)
+- [x] Implement Google Tasks desktop multi-column workspace (user lists side-by-side, responsive columns, smooth horizontal scroll controls)
+- [x] Implement Google Tasks lists CRUD (My Tasks, Sharpen My Skills, Website Projects, Daily Routine, Business Goals, user lists, reordering, rename, delete)
+- [x] Implement Tasks CRUD & quick inline composer (title, Enter to add, Esc to cancel, details modal, due date/time chips, star toggles)
+- [x] Implement Google Tasks-style 1-level subtasks (create, toggle complete, edit, delete, promote to top-level task)
+- [x] Implement roll-forward recurrence engine (`daily`, `weekdays`, `weekly` on specific weekdays, `monthly` with safe month-end clamp e.g. Jan 31 -> Feb 28, `yearly`, series deduplication)
+- [x] Implement `@dnd-kit/sortable` drag-and-drop task reordering within lists, moving tasks between lists, and column reordering
+- [x] Implement Google Tasks keyboard shortcuts modal & context-aware hotkeys
+- [x] Implement Starred aggregated view, Today view, and Completed view with Undo action banner
+- [x] Verify unit, recurrence, and component tests (`google-tasks-experience.test.tsx` 8/8, `recurrence.test.ts` 8/8, full suite 11/11 files passed, 0 lint warnings, 0 typecheck errors, production build verified)
 
 ## Phase 4: Notion-Inspired Rich-Text Notes Editor & Reliable Auto-Save
 - [ ] Implement Notes list, pinning, and project filtering

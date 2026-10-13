@@ -1,141 +1,936 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, CalendarDays, Check, ChevronDown, ChevronRight, Circle, Clock3, Plus, Star, Trash2 } from "lucide-react";
+import * as React from "react";
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Keyboard,
+  Plus,
+  RotateCcw,
+  Star,
+  X,
+} from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useDeskData } from "./store";
-import type { TaskItem } from "./types";
+import type { TaskItem, TaskList, TaskSubtask } from "./types";
+import { initialTaskLists } from "./seed";
+import { handleTaskCompletion } from "./tasks/recurrence";
+import { TaskListColumn } from "./tasks/task-list-column";
+import { TaskDetailModal } from "./tasks/task-detail-modal";
+import { StarredTasksView } from "./tasks/starred-tasks-view";
+import { TaskShortcutsDialog } from "./tasks/task-shortcuts-dialog";
+import { TaskRow } from "./tasks/task-row";
 
-type TaskFilter = "Today" | "Starred" | "Upcoming" | "Completed";
+export type ViewFilter = "All" | "Today" | "Starred" | "Completed" | string;
 
-export function TasksView({ filter: initialFilter = "Today", initialTaskId }: { filter?: TaskFilter; initialTaskId?: string } = {}) {
+export interface TasksViewProps {
+  filter?: string;
+  initialTaskId?: string;
+}
+
+export function TasksView({
+  filter: initialFilter = "Today",
+  initialTaskId,
+}: TasksViewProps = {}) {
   const { data, update, selectedItem, setSelectedItem } = useDeskData();
-  const [filter, setFilter] = useState<TaskFilter>(initialFilter);
-  const [draft, setDraft] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(initialTaskId ?? selectedItem ?? null);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [subtaskDraft, setSubtaskDraft] = useState("");
+  const searchParams = useSearchParams();
 
-  useEffect(() => {
+  // Active view filter: "All", "Today", "Starred", "Completed", or a specific listId
+  const [activeView, setActiveView] = React.useState<ViewFilter>(initialFilter);
+
+  React.useEffect(() => {
+    if (!searchParams) return;
+    const filterParam = searchParams.get("filter");
+    const listParam = searchParams.get("list");
+    if (filterParam) {
+      setActiveView(filterParam);
+    } else if (listParam) {
+      setActiveView(listParam);
+    }
+  }, [searchParams]);
+  const [editingTask, setEditingTask] = React.useState<TaskItem | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = React.useState(false);
+  const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(new Set());
+  const [isNewListDialogOpen, setIsNewListDialogOpen] = React.useState(false);
+  const [newListTitle, setNewListTitle] = React.useState("");
+  const [isShortcutsDialogOpen, setIsShortcutsDialogOpen] = React.useState(false);
+  const [quickDraft, setQuickDraft] = React.useState("");
+
+  // Undo notification state
+  const [undoAction, setUndoAction] = React.useState<{
+    message: string;
+    undo: () => void;
+  } | null>(null);
+
+  // Active item being dragged for drag preview overlay
+  const [activeDragItem, setActiveDragItem] = React.useState<{
+    type: "column" | "task";
+    data: TaskList | TaskItem;
+  } | null>(null);
+
+  // Horizontal scroll ref
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = React.useState(false);
+  const [canScrollRight, setCanScrollRight] = React.useState(false);
+
+  // Selected task from external prop
+  React.useEffect(() => {
     const targetId = initialTaskId ?? selectedItem;
-    if (targetId && data.tasks.some((task) => task.id === targetId)) {
-      setExpanded(targetId);
-      if (selectedItem === targetId) {
-        setSelectedItem(null);
+    if (targetId) {
+      const found = data.tasks.find((t) => t.id === targetId);
+      if (found) {
+        setEditingTask(found);
+        setIsDetailModalOpen(true);
+        if (selectedItem === targetId) {
+          setSelectedItem(null);
+        }
       }
     }
   }, [data.tasks, initialTaskId, selectedItem, setSelectedItem]);
 
-  const tasks = useMemo(() => {
-    const matching = data.tasks.filter((task) => {
-      if (filter === "Completed") return task.complete;
-      if (task.complete) return false;
-      if (filter === "Starred") return task.starred;
-      if (filter === "Upcoming") return task.due === "Tomorrow" || task.due === "This week";
-      return task.due !== "Tomorrow" && task.due !== "This week";
-    });
-    return matching;
-  }, [data.tasks, filter]);
+  // Ensure task lists exist and are sorted by order
+  const taskLists = React.useMemo(() => {
+    const lists = data.taskLists && data.taskLists.length > 0 ? data.taskLists : initialTaskLists;
+    return [...lists].sort((a, b) => a.order - b.order);
+  }, [data.taskLists]);
 
-  const addTask = () => {
-    const title = draft.trim();
-    if (!title) return;
-    update((current) => ({
-      ...current,
-      tasks: [{ id: crypto.randomUUID(), title, note: "", due: "Today", priority: "medium", complete: false, starred: false, projectId: "personal", subtasks: [] }, ...current.tasks],
+  const primaryListId = taskLists[0]?.id || "list-my-tasks";
+
+  // Check scroll bounds
+  const updateScrollButtons = React.useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 10);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 10);
+  }, []);
+
+  React.useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    updateScrollButtons();
+    el.addEventListener("scroll", updateScrollButtons, { passive: true });
+    window.addEventListener("resize", updateScrollButtons);
+    return () => {
+      el.removeEventListener("scroll", updateScrollButtons);
+      window.removeEventListener("resize", updateScrollButtons);
+    };
+  }, [updateScrollButtons, taskLists.length]);
+
+  function scrollHorizontal(direction: "left" | "right") {
+    if (!scrollContainerRef.current) return;
+    const offset = direction === "left" ? -350 : 350;
+    scrollContainerRef.current.scrollBy({ left: offset, behavior: "smooth" });
+  }
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 6, // 6px movement required before drag begins, preserving clicks
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Drag Handlers
+  function handleDragStart(event: DragStartEvent) {
+    const { active } = event;
+    const activeId = String(active.id);
+
+    if (activeId.startsWith("column-")) {
+      const listId = activeId.replace("column-", "");
+      const foundList = taskLists.find((l) => l.id === listId);
+      if (foundList) {
+        setActiveDragItem({ type: "column", data: foundList });
+      }
+    } else {
+      const foundTask = data.tasks.find((t) => t.id === activeId);
+      if (foundTask) {
+        setActiveDragItem({ type: "task", data: foundTask });
+      }
+    }
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    setActiveDragItem(null);
+
+    if (!over || active.id === over.id) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    // Case 1: Reordering Columns
+    if (activeId.startsWith("column-") && overId.startsWith("column-")) {
+      const sourceListId = activeId.replace("column-", "");
+      const targetListId = overId.replace("column-", "");
+
+      const oldIndex = taskLists.findIndex((l) => l.id === sourceListId);
+      const newIndex = taskLists.findIndex((l) => l.id === targetListId);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const reordered = arrayMove(taskLists, oldIndex, newIndex).map(
+          (list, idx) => ({ ...list, order: idx })
+        );
+        update((curr) => ({ ...curr, taskLists: reordered }));
+      }
+      return;
+    }
+
+    // Case 2: Reordering Tasks
+    if (!activeId.startsWith("column-")) {
+      const activeTask = data.tasks.find((t) => t.id === activeId);
+      if (!activeTask) return;
+
+      // Over might be another task or a column
+      let targetListId = activeTask.listId;
+      if (overId.startsWith("column-")) {
+        targetListId = overId.replace("column-", "");
+      } else {
+        const overTask = data.tasks.find((t) => t.id === overId);
+        if (overTask) {
+          targetListId = overTask.listId;
+        }
+      }
+
+      const tasksInTargetList = data.tasks
+        .filter((t) => t.listId === targetListId && !t.complete)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+      const oldIndex = tasksInTargetList.findIndex((t) => t.id === activeId);
+      const newIndex = tasksInTargetList.findIndex((t) => t.id === overId);
+
+      update((curr) => {
+        let updatedListTasks = [...tasksInTargetList];
+
+        if (activeTask.listId !== targetListId) {
+          // Moved across lists
+          const movedTask: TaskItem = { ...activeTask, listId: targetListId };
+          if (newIndex >= 0) {
+            updatedListTasks.splice(newIndex, 0, movedTask);
+          } else {
+            updatedListTasks.push(movedTask);
+          }
+        } else if (oldIndex !== -1 && newIndex !== -1) {
+          // Reordered within same list
+          updatedListTasks = arrayMove(updatedListTasks, oldIndex, newIndex);
+        }
+
+        // Assign continuous orders
+        const finalOrders = new Map<string, number>();
+        updatedListTasks.forEach((t, idx) => finalOrders.set(t.id, idx));
+
+        return {
+          ...curr,
+          tasks: curr.tasks.map((t) => {
+            if (t.id === activeTask.id && activeTask.listId !== targetListId) {
+              return {
+                ...t,
+                listId: targetListId,
+                order: finalOrders.get(t.id) ?? t.order,
+              };
+            }
+            if (finalOrders.has(t.id)) {
+              return { ...t, order: finalOrders.get(t.id) };
+            }
+            return t;
+          }),
+        };
+      });
+    }
+  }
+
+  // Task Mutations
+  function patchTask(taskId: string, patch: Partial<TaskItem>) {
+    update((curr) => ({
+      ...curr,
+      tasks: curr.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
     }));
-    setDraft("");
-  };
+    if (editingTask && editingTask.id === taskId) {
+      setEditingTask((prev) => (prev ? { ...prev, ...patch } : null));
+    }
+  }
 
-  const patchTask = (id: string, values: Partial<TaskItem>) => {
-    update((current) => ({ ...current, tasks: current.tasks.map((task) => task.id === id ? { ...task, ...values } : task) }));
-  };
+  function handleToggleComplete(task: TaskItem) {
+    const originalTask = { ...task };
+    const { updatedCurrent, nextOccurrence } = handleTaskCompletion(
+      task,
+      data.tasks
+    );
 
-  const moveTask = (taskId: string, direction: -1 | 1) => {
-    update((current) => {
-      const ordered = [...current.tasks];
-      const index = ordered.findIndex((item) => item.id === taskId);
-      const nextIndex = index + direction;
-      if (index < 0 || nextIndex < 0 || nextIndex >= ordered.length) return current;
-      [ordered[index], ordered[nextIndex]] = [ordered[nextIndex]!, ordered[index]!];
-      return { ...current, tasks: ordered };
+    update((curr) => {
+      let nextTasks = curr.tasks.map((t) =>
+        t.id === task.id ? updatedCurrent : t
+      );
+      if (nextOccurrence) {
+        nextTasks = [nextOccurrence, ...nextTasks];
+      }
+      return { ...curr, tasks: nextTasks };
     });
-  };
 
-  const createSubtask = (task: TaskItem) => {
-    const title = subtaskDraft.trim();
+    if (editingTask && editingTask.id === task.id) {
+      setEditingTask(updatedCurrent);
+    }
+
+    // Set Undo action
+    setUndoAction({
+      message: updatedCurrent.complete ? `Completed "${task.title}"` : `Reopened "${task.title}"`,
+      undo: () => {
+        update((curr) => ({
+          ...curr,
+          tasks: curr.tasks
+            .filter((t) => !nextOccurrence || t.id !== nextOccurrence.id)
+            .map((t) => (t.id === task.id ? originalTask : t)),
+        }));
+        setUndoAction(null);
+      },
+    });
+  }
+
+  function handleToggleStar(task: TaskItem) {
+    patchTask(task.id, { starred: !task.starred });
+  }
+
+  function handleDeleteTask(taskId: string) {
+    const deleted = data.tasks.find((t) => t.id === taskId);
+    if (!deleted) return;
+
+    update((curr) => ({
+      ...curr,
+      tasks: curr.tasks.filter((t) => t.id !== taskId),
+    }));
+
+    if (editingTask && editingTask.id === taskId) {
+      setEditingTask(null);
+      setIsDetailModalOpen(false);
+    }
+
+    setUndoAction({
+      message: `Deleted "${deleted.title}"`,
+      undo: () => {
+        update((curr) => ({
+          ...curr,
+          tasks: [deleted, ...curr.tasks],
+        }));
+        setUndoAction(null);
+      },
+    });
+  }
+
+  function handleDuplicateTask(task: TaskItem) {
+    const dup: TaskItem = {
+      ...task,
+      id: crypto.randomUUID(),
+      title: `${task.title} (copy)`,
+      order: (task.order ?? 0) + 1,
+      subtasks: task.subtasks.map((s) => ({
+        ...s,
+        id: crypto.randomUUID(),
+      })),
+    };
+
+    update((curr) => ({
+      ...curr,
+      tasks: [dup, ...curr.tasks],
+    }));
+  }
+
+  function handleMoveTaskToList(taskId: string, targetListId: string) {
+    patchTask(taskId, { listId: targetListId });
+  }
+
+  function handlePromoteSubtask(parentTask: TaskItem, subtask: TaskSubtask) {
+    // 1. Remove subtask from parent
+    const updatedSubtasks = parentTask.subtasks.filter(
+      (s) => s.id !== subtask.id
+    );
+    patchTask(parentTask.id, { subtasks: updatedSubtasks });
+
+    // 2. Create as top-level task in the same list
+    const newTopTask: TaskItem = {
+      id: crypto.randomUUID(),
+      listId: parentTask.listId,
+      title: subtask.title,
+      note: `Promoted from "${parentTask.title}"`,
+      due: parentTask.due || "Today",
+      dueTime: parentTask.dueTime,
+      priority: parentTask.priority,
+      complete: subtask.complete,
+      starred: false,
+      order: 0,
+      subtasks: [],
+    };
+
+    update((curr) => ({
+      ...curr,
+      tasks: [newTopTask, ...curr.tasks],
+    }));
+  }
+
+  function handleAddTask(newTask: TaskItem) {
+    update((curr) => ({
+      ...curr,
+      tasks: [newTask, ...curr.tasks],
+    }));
+  }
+
+  function handleQuickAdd() {
+    const title = quickDraft.trim();
     if (!title) return;
-    patchTask(task.id, { subtasks: [...task.subtasks, { id: crypto.randomUUID(), title, complete: false }] });
-    setSubtaskDraft("");
-  };
+    const newTask: TaskItem = {
+      id: crypto.randomUUID(),
+      listId: primaryListId,
+      title,
+      note: "",
+      due: "Today",
+      priority: "medium",
+      complete: false,
+      starred: false,
+      order: 0,
+      subtasks: [],
+    };
+    handleAddTask(newTask);
+    setQuickDraft("");
+  }
 
-  const heading = filter === "Today" ? "A little progress adds up." : filter === "Completed" ? "Look at all you moved forward." : filter === "Starred" ? "The things you want to keep close." : "A clear view of what’s ahead.";
+  // List Management
+  function handleCreateList(e: React.FormEvent) {
+    e.preventDefault();
+    const title = newListTitle.trim();
+    if (!title) return;
+
+    const newList: TaskList = {
+      id: crypto.randomUUID(),
+      title,
+      order: taskLists.length,
+      createdAt: new Date().toISOString(),
+    };
+
+    update((curr) => ({
+      ...curr,
+      taskLists: [...taskLists, newList],
+    }));
+
+    setNewListTitle("");
+    setIsNewListDialogOpen(false);
+    // Automatically switch or scroll
+    setActiveView("All");
+  }
+
+  function handleRenameList(listId: string, newTitle: string) {
+    update((curr) => ({
+      ...curr,
+      taskLists: (curr.taskLists || initialTaskLists).map((l) =>
+        l.id === listId ? { ...l, title: newTitle } : l
+      ),
+    }));
+  }
+
+  function handleDeleteList(listId: string) {
+    if (taskLists.length <= 1) return; // Cannot delete last remaining list
+    update((curr) => ({
+      ...curr,
+      taskLists: (curr.taskLists || initialTaskLists).filter((l) => l.id !== listId),
+      tasks: curr.tasks.filter((t) => t.listId !== listId),
+    }));
+    if (activeView === listId) {
+      setActiveView("All");
+    }
+  }
+
+  function toggleExpandTask(taskId: string) {
+    setExpandedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }
+
+  // Keyboard navigation & global shortcuts scoped to Tasks
+  React.useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      // Don't capture when typing in inputs/textareas or Notes editor
+      const target = e.target as HTMLElement | null;
+      const isInput =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable ||
+          target.closest(".ProseMirror"));
+
+      if (isInput) return;
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        if (undoAction) {
+          e.preventDefault();
+          undoAction.undo();
+        }
+      } else if (e.key === "?") {
+        e.preventDefault();
+        setIsShortcutsDialogOpen(true);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undoAction]);
+
+  // View titles & headers
+  const totalOpenTasks = data.tasks.filter((t) => !t.complete).length;
+  const totalCompletedTasks = data.tasks.filter((t) => t.complete).length;
 
   return (
-    <section className="mx-auto w-full max-w-5xl px-5 pb-20 pt-7 sm:px-8 sm:pt-10">
-      <header className="mb-8 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4 sm:flex sm:justify-between">
-        <div className="min-w-0">
-          <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground"><CalendarDays className="size-4" /> Your time, well spent</div>
-          <h1 className="truncate text-3xl font-semibold">{filter === "Today" ? "Today" : filter}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{heading}</p>
+    <div className="flex h-full min-h-[calc(100vh-64px)] flex-col bg-background text-foreground">
+      {/* Top Navigation & Toolbar Bar */}
+      <header className="sticky top-0 z-10 border-b border-border/80 bg-background/95 px-4 sm:px-6 py-3 backdrop-blur-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* View Filter Switcher Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto minddesk-scrollbar py-0.5">
+            <Button
+              type="button"
+              variant={activeView === "All" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 text-xs font-semibold rounded-lg"
+              onClick={() => setActiveView("All")}
+            >
+              <span>All lists</span>
+              {totalOpenTasks > 0 && (
+                <span className="ml-1 text-[10px] text-muted-foreground">
+                  ({totalOpenTasks})
+                </span>
+              )}
+            </Button>
+
+            <Button
+              type="button"
+              variant={activeView === "Today" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 text-xs font-semibold rounded-lg"
+              onClick={() => setActiveView("Today")}
+            >
+              Today
+            </Button>
+
+            <Button
+              type="button"
+              variant={activeView === "Starred" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 text-xs font-semibold rounded-lg"
+              onClick={() => setActiveView("Starred")}
+            >
+              <Star className="size-3.5 fill-amber-500 text-amber-500 mr-1" />
+              Starred
+            </Button>
+
+            <Button
+              type="button"
+              variant={activeView === "Completed" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 text-xs font-semibold rounded-lg"
+              onClick={() => setActiveView("Completed")}
+              aria-label="Completed"
+            >
+              <span>Completed</span>
+              {totalCompletedTasks > 0 && (
+                <span className="ml-1 text-[11px] opacity-75">
+                  ({totalCompletedTasks})
+                </span>
+              )}
+            </Button>
+
+            {/* Individual List Pills */}
+            <div className="hidden lg:flex items-center gap-1 border-l border-border/80 pl-2 ml-1">
+              {taskLists.map((list) => {
+                const count = data.tasks.filter(
+                  (t) => t.listId === list.id && !t.complete
+                ).length;
+                return (
+                  <Button
+                    key={list.id}
+                    type="button"
+                    variant={activeView === list.id ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-8 text-xs rounded-lg max-w-[140px] truncate"
+                    onClick={() => setActiveView(list.id)}
+                  >
+                    <span className="truncate">{list.title}</span>
+                    <span className="ml-1 text-[10px] text-muted-foreground">
+                      {count}
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right Action Controls */}
+          <div className="flex items-center gap-1.5 ml-auto">
+            {/* Horizontal Scroll Controls for Desktop Columns */}
+            {activeView === "All" && (
+              <div className="hidden md:flex items-center gap-0.5 border border-border/80 rounded-lg p-0.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  disabled={!canScrollLeft}
+                  onClick={() => scrollHorizontal("left")}
+                  aria-label="Scroll lists left"
+                  title="Scroll left"
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  disabled={!canScrollRight}
+                  onClick={() => scrollHorizontal("right")}
+                  aria-label="Scroll lists right"
+                  title="Scroll right"
+                >
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            )}
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1.5 rounded-lg"
+              onClick={() => setIsNewListDialogOpen(true)}
+            >
+              <Plus className="size-3.5" />
+              <span>Create list</span>
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 text-muted-foreground hover:text-foreground"
+              aria-label="Keyboard shortcuts"
+              title="Keyboard shortcuts (?)"
+              onClick={() => setIsShortcutsDialogOpen(true)}
+            >
+              <Keyboard className="size-4" />
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground"><Check className="size-4" /> {data.tasks.filter((task) => task.complete).length} done</div>
+
+        {/* Quick Task Input Bar (Available in Today / Completed / List views) */}
+        {(activeView === "Today" || activeView === "All") && (
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-border/70 bg-card px-3.5 py-1.5 focus-within:border-primary/60 transition-colors">
+            <Plus className="size-4 text-primary shrink-0" />
+            <input
+              type="text"
+              aria-label="Add a task"
+              placeholder="Add a task and press Enter…"
+              value={quickDraft}
+              onChange={(e) => setQuickDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleQuickAdd();
+              }}
+              className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+            />
+            {quickDraft.trim() && (
+              <Button size="sm" className="h-7 text-xs" onClick={handleQuickAdd}>
+                Add task
+              </Button>
+            )}
+          </div>
+        )}
       </header>
 
-      <div className="mb-6 flex flex-wrap gap-1 rounded-xl border border-border bg-card p-1 sm:w-fit">
-        {(["Today", "Starred", "Upcoming", "Completed"] as TaskFilter[]).map((option) => (
-          <Button key={option} variant={filter === option ? "secondary" : "ghost"} size="sm" onClick={() => setFilter(option)}>{option}</Button>
-        ))}
-      </div>
+      {/* Main Workspace Body */}
+      <main className="flex-1 min-h-0">
+        {/* VIEW 1: Starred View */}
+        {activeView === "Starred" ? (
+          <StarredTasksView
+            taskLists={taskLists}
+            tasks={data.tasks}
+            expandedTaskIds={expandedTaskIds}
+            onToggleExpand={toggleExpandTask}
+            onToggleComplete={handleToggleComplete}
+            onToggleStar={handleToggleStar}
+            onTaskClick={(task) => {
+              setEditingTask(task);
+              setIsDetailModalOpen(true);
+            }}
+            onUpdateTask={patchTask}
+            onDeleteTask={handleDeleteTask}
+            onDuplicateTask={handleDuplicateTask}
+            onMoveTaskToList={handleMoveTaskToList}
+            onPromoteSubtask={handlePromoteSubtask}
+          />
+        ) : activeView === "Completed" ? (
+          /* VIEW 2: All Completed Tasks View */
+          <div className="mx-auto w-full max-w-4xl px-4 sm:px-6 py-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-border/80 pb-3">
+              <h1 className="text-xl font-bold tracking-tight text-foreground">
+                Completed
+              </h1>
+              <span className="text-xs text-muted-foreground">
+                {totalCompletedTasks} completed tasks
+              </span>
+            </div>
 
-      {filter !== "Completed" && (
-        <div className="mb-5 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 focus-within:border-ring">
-          <Plus className="size-4 shrink-0 text-primary" />
-          <input aria-label="Add a task" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" placeholder="Add a task and press Enter…" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addTask(); }} />
-          {draft.trim() && <Button size="sm" onClick={addTask}>Add task</Button>}
-        </div>
-      )}
-
-      <div className="minddesk-panel divide-y divide-border overflow-hidden">
-        {tasks.length === 0 ? (
-          <div className="px-6 py-14 text-center"><div className="mx-auto mb-3 grid size-11 place-items-center rounded-full bg-sage text-sage-ink"><Check className="size-5" /></div><p className="font-medium">Nothing on this list</p><p className="mt-1 text-sm text-muted-foreground">A little room to think.</p></div>
-        ) : tasks.map((task) => {
-          const project = data.projects.find((item) => item.id === task.projectId);
-          const isExpanded = expanded === task.id;
-          return (
-            <article key={task.id} draggable onDragStart={(event) => { event.dataTransfer.setData("text/plain", task.id); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const draggedId = event.dataTransfer.getData("text/plain"); if (!draggedId || draggedId === task.id) return; update((current) => { const ordered = [...current.tasks]; const fromIndex = ordered.findIndex((item) => item.id === draggedId); const toIndex = ordered.findIndex((item) => item.id === task.id); if (fromIndex < 0 || toIndex < 0) return current; const [moved] = ordered.splice(fromIndex, 1); if (!moved) return current; ordered.splice(toIndex, 0, moved); return { ...current, tasks: ordered }; }); }} className="minddesk-task-row px-4 py-4 sm:px-5" data-done={task.complete}>
-              <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3">
-                <button className="minddesk-task-check mt-0.5 grid size-5 place-items-center" data-done={task.complete} aria-label={task.complete ? `Reopen ${task.title}` : `Complete ${task.title}`} onClick={() => patchTask(task.id, { complete: !task.complete })}>{task.complete && <Check className="size-3.5" />}</button>
-                <div className="min-w-0">
-                  {editing === task.id ? <input autoFocus aria-label="Edit task title" className="w-full border-b border-primary bg-transparent pb-1 text-sm font-medium outline-none" value={task.title} onChange={(event) => patchTask(task.id, { title: event.target.value })} onBlur={() => setEditing(null)} onKeyDown={(event) => { if (event.key === "Enter") setEditing(null); }} /> : <button className="minddesk-task-title block max-w-full truncate text-left text-sm font-medium" onDoubleClick={() => setEditing(task.id)} onClick={() => setExpanded(isExpanded ? null : task.id)}>{task.title}</button>}
-                  {task.note && <p className="mt-1 truncate text-xs text-muted-foreground">{task.note}</p>}
-                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1"><Clock3 className="size-3.5" />{task.due}</span>
-                    {project && <span className="inline-flex items-center gap-1"><span className={`size-1.5 rounded-full ${project.hue === "mint" ? "bg-sage-ink" : project.hue === "amber" ? "bg-coral-ink" : project.hue === "blue" ? "bg-sky-ink" : "bg-primary"}`} />{project.name}</span>}
-                    {task.subtasks.length > 0 && <button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => setExpanded(isExpanded ? null : task.id)}>{isExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}{task.subtasks.filter((subtask) => subtask.complete).length}/{task.subtasks.length} subtasks</button>}
-                    <span className={`rounded px-1.5 py-0.5 capitalize ${task.priority === "high" ? "bg-coral text-coral-ink" : task.priority === "medium" ? "bg-sky text-sky-ink" : "bg-muted text-muted-foreground"}`}>{task.priority}</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-0.5">
-                  <Button variant="ghost" size="icon" aria-label="Move task up" title="Move task up" onClick={() => moveTask(task.id, -1)}><ArrowUp className="size-4" /></Button>
-                  <Button variant="ghost" size="icon" aria-label="Move task down" title="Move task down" onClick={() => moveTask(task.id, 1)}><ArrowDown className="size-4" /></Button>
-                  <Button variant="ghost" size="icon" aria-label={task.starred ? "Remove from starred" : "Add to starred"} onClick={() => patchTask(task.id, { starred: !task.starred })}><Star className={`size-4 ${task.starred ? "fill-primary text-primary" : "text-muted-foreground"}`} /></Button>
-                  <Button variant="ghost" size="icon" aria-label="Show task details" onClick={() => setExpanded(isExpanded ? null : task.id)}><ChevronDown className={`size-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} /></Button>
-                </div>
+            {totalCompletedTasks === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border/80 p-12 text-center text-muted-foreground text-xs">
+                No completed tasks yet. Completed tasks from all lists will appear here.
               </div>
-              {isExpanded && <div className="ml-8 mt-4 space-y-3 border-l border-border pl-4">
-                <textarea aria-label="Task note" className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring" placeholder="Add a note…" value={task.note} onChange={(event) => patchTask(task.id, { note: event.target.value })} rows={2} />
-                <div className="flex items-center gap-2"><label className="text-xs text-muted-foreground" htmlFor={`priority-${task.id}`}>Priority</label><select id={`priority-${task.id}`} className="rounded-md border border-input bg-background px-2 py-1 text-xs" value={task.priority} onChange={(event) => patchTask(task.id, { priority: event.target.value as TaskItem["priority"] })}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select><label className="ml-2 text-xs text-muted-foreground" htmlFor={`due-${task.id}`}>Due</label><input id={`due-${task.id}`} className="w-28 rounded-md border border-input bg-background px-2 py-1 text-xs" value={task.due} onChange={(event) => patchTask(task.id, { due: event.target.value })} /></div>
-                {task.subtasks.map((subtask) => <div key={subtask.id} className="flex items-center gap-2"><button aria-label={subtask.complete ? "Reopen subtask" : "Complete subtask"} className="grid size-4 place-items-center rounded border border-border" onClick={() => patchTask(task.id, { subtasks: task.subtasks.map((item) => item.id === subtask.id ? { ...item, complete: !item.complete } : item) })}>{subtask.complete && <Check className="size-3" />}</button><span className={`text-xs ${subtask.complete ? "text-muted-foreground line-through" : ""}`}>{subtask.title}</span></div>)}
-                <form className="flex items-center gap-2" onSubmit={(event) => { event.preventDefault(); createSubtask(task); }}><Circle className="size-3.5 text-muted-foreground" /><input aria-label="Add subtask" className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground" placeholder="Add a subtask…" value={subtaskDraft} onChange={(event) => setSubtaskDraft(event.target.value)} /><Button type="submit" variant="ghost" size="sm">Add</Button></form>
-                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => update((current) => ({ ...current, tasks: current.tasks.filter((item) => item.id !== task.id) }))}><Trash2 className="size-3.5" /> Delete task</Button>
-              </div>}
-            </article>
-          );
-        })}
-      </div>
-      <div className="mt-4 flex justify-end"><Button variant="ghost" size="sm" onClick={() => setFilter("Upcoming")}><ArrowDown className="size-3.5" /> Plan ahead</Button></div>
-    </section>
+            ) : (
+              <div className="space-y-2">
+                {data.tasks
+                  .filter((t) => t.complete)
+                  .map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      taskLists={taskLists}
+                      isExpanded={expandedTaskIds.has(task.id)}
+                      onToggleExpand={toggleExpandTask}
+                      onToggleComplete={handleToggleComplete}
+                      onToggleStar={handleToggleStar}
+                      onClick={(t) => {
+                        setEditingTask(t);
+                        setIsDetailModalOpen(true);
+                      }}
+                      onUpdate={patchTask}
+                      onDelete={handleDeleteTask}
+                      onDuplicate={handleDuplicateTask}
+                      onMoveToList={handleMoveTaskToList}
+                      onPromoteSubtask={handlePromoteSubtask}
+                    />
+                  ))}
+              </div>
+            )}
+          </div>
+        ) : activeView === "Today" ? (
+          /* VIEW 3: Today View */
+          <div className="mx-auto w-full max-w-4xl px-4 sm:px-6 py-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-border/80 pb-3">
+              <h1 className="text-xl font-bold tracking-tight text-foreground">
+                Today
+              </h1>
+              <span className="text-xs text-muted-foreground">
+                {data.tasks.filter((t) => t.due === "Today" && !t.complete).length} tasks due today
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {data.tasks
+                .filter((t) => t.due === "Today" && !t.complete)
+                .map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    taskLists={taskLists}
+                    isExpanded={expandedTaskIds.has(task.id)}
+                    onToggleExpand={toggleExpandTask}
+                    onToggleComplete={handleToggleComplete}
+                    onToggleStar={handleToggleStar}
+                    onClick={(t) => {
+                      setEditingTask(t);
+                      setIsDetailModalOpen(true);
+                    }}
+                    onUpdate={patchTask}
+                    onDelete={handleDeleteTask}
+                    onDuplicate={handleDuplicateTask}
+                    onMoveToList={handleMoveTaskToList}
+                    onPromoteSubtask={handlePromoteSubtask}
+                  />
+                ))}
+            </div>
+          </div>
+        ) : (
+          /* VIEW 4: Google Tasks Horizontal Columns ("All" or specific single list view) */
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div
+              ref={scrollContainerRef}
+              className="flex h-[calc(100vh-140px)] gap-4 overflow-x-auto p-4 sm:p-6 minddesk-scrollbar overscroll-x-contain"
+            >
+              <SortableContext
+                items={taskLists.map((l) => `column-${l.id}`)}
+                strategy={horizontalListSortingStrategy}
+              >
+                {taskLists
+                  .filter((l) => activeView === "All" || activeView === l.id)
+                  .map((list) => {
+                    const listTasks = data.tasks.filter(
+                      (t) => t.listId === list.id
+                    );
+
+                    return (
+                      <TaskListColumn
+                        key={list.id}
+                        list={list}
+                        allLists={taskLists}
+                        tasks={listTasks}
+                        expandedTaskIds={expandedTaskIds}
+                        onToggleExpand={toggleExpandTask}
+                        onToggleComplete={handleToggleComplete}
+                        onToggleStar={handleToggleStar}
+                        onTaskClick={(task) => {
+                          setEditingTask(task);
+                          setIsDetailModalOpen(true);
+                        }}
+                        onUpdateTask={patchTask}
+                        onDeleteTask={handleDeleteTask}
+                        onDuplicateTask={handleDuplicateTask}
+                        onMoveTaskToList={handleMoveTaskToList}
+                        onPromoteSubtask={handlePromoteSubtask}
+                        onAddTask={handleAddTask}
+                        onRenameList={handleRenameList}
+                        onDeleteList={handleDeleteList}
+                      />
+                    );
+                  })}
+              </SortableContext>
+            </div>
+
+            {/* Drag Overlay for smooth preview during drag */}
+            <DragOverlay>
+              {activeDragItem ? (
+                activeDragItem.type === "column" ? (
+                  <div className="w-[330px] rounded-2xl border-2 border-primary bg-card/95 p-4 shadow-2xl backdrop-blur-md">
+                    <h3 className="font-semibold text-sm">
+                      {(activeDragItem.data as TaskList).title}
+                    </h3>
+                  </div>
+                ) : (
+                  <div className="w-[300px] rounded-xl border-2 border-primary bg-card/95 p-3 shadow-2xl backdrop-blur-md">
+                    <p className="text-sm font-medium">
+                      {(activeDragItem.data as TaskItem).title}
+                    </p>
+                  </div>
+                )
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        )}
+      </main>
+
+      {/* Task Detail Modal */}
+      <TaskDetailModal
+        task={editingTask}
+        taskLists={taskLists}
+        open={isDetailModalOpen}
+        onOpenChange={setIsDetailModalOpen}
+        onUpdate={patchTask}
+        onToggleComplete={handleToggleComplete}
+        onDelete={handleDeleteTask}
+        onDuplicate={handleDuplicateTask}
+        onPromoteSubtask={handlePromoteSubtask}
+      />
+
+      {/* Create New List Dialog */}
+      <Dialog open={isNewListDialogOpen} onOpenChange={setIsNewListDialogOpen}>
+        <DialogContent className="max-w-xs p-5 rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">
+              Create new list
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateList} className="space-y-4 pt-2">
+            <input
+              type="text"
+              autoFocus
+              placeholder="Enter list title…"
+              value={newListTitle}
+              onChange={(e) => setNewListTitle(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring text-foreground"
+            />
+            <DialogFooter className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsNewListDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={!newListTitle.trim()}
+              >
+                Done
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Keyboard Shortcuts Dialog */}
+      <TaskShortcutsDialog
+        open={isShortcutsDialogOpen}
+        onOpenChange={setIsShortcutsDialogOpen}
+      />
+
+      {/* Floating Undo Toast Banner */}
+      {undoAction && (
+        <aside
+          role="status"
+          aria-live="polite"
+          aria-label="Undo banner"
+          className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border border-border bg-card/95 px-4 py-2 text-xs font-medium text-foreground shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-3"
+        >
+          <span>{undoAction.message}</span>
+          <button
+            type="button"
+            onClick={undoAction.undo}
+            className="flex items-center gap-1 font-semibold text-primary hover:underline"
+          >
+            <RotateCcw className="size-3" />
+            <span>Undo</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setUndoAction(null)}
+            className="text-muted-foreground hover:text-foreground ml-1"
+            aria-label="Dismiss undo notification"
+          >
+            <X className="size-3.5" />
+          </button>
+        </aside>
+      )}
+    </div>
   );
 }

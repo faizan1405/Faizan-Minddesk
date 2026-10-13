@@ -155,11 +155,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
           {PRIMARY_NAV_ITEMS.map(({ id, title, href, icon: Icon }) => {
             const active = isActiveRoute(href);
             return (
-              <Link
-                key={id}
-                href={href}
-                onClick={() => setMobileNavOpen(false)}
-                aria-current={active ? "page" : undefined}
+              <React.Fragment key={id}>
+                <Link
+                  href={href}
+                  onClick={() => setMobileNavOpen(false)}
+                  aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm transition-colors",
                   active
@@ -173,8 +173,54 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   <span className="text-xs text-muted-foreground">{openTaskCount}</span>
                 )}
               </Link>
-            );
-          })}
+              {id === "tasks" && active && (
+                <div className="ml-5 mt-1 space-y-0.5 border-l border-sidebar-border pl-2.5 py-1">
+                  <Link
+                    href="/tasks"
+                    onClick={() => setMobileNavOpen(false)}
+                    className="flex h-7 items-center justify-between rounded px-2 text-xs text-sidebar-foreground/80 hover:bg-sidebar-accent/60"
+                  >
+                    <span>All lists</span>
+                    <span className="text-[10px] text-muted-foreground">{openTaskCount}</span>
+                  </Link>
+                  <Link
+                    href="/tasks?filter=Starred"
+                    onClick={() => setMobileNavOpen(false)}
+                    className="flex h-7 items-center justify-between rounded px-2 text-xs text-sidebar-foreground/80 hover:bg-sidebar-accent/60"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Star className="size-3 text-amber-500 fill-amber-500" /> Starred
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {data.tasks.filter((t) => t.starred && !t.complete).length}
+                    </span>
+                  </Link>
+                  {(data.taskLists && data.taskLists.length > 0) && (
+                    <div className="pt-1.5 pb-0.5 px-2 text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">
+                      Lists
+                    </div>
+                  )}
+                  {(data.taskLists || []).map((list) => {
+                    const count = data.tasks.filter(
+                      (t) => t.listId === list.id && !t.complete
+                    ).length;
+                    return (
+                      <Link
+                        key={list.id}
+                        href={`/tasks?list=${list.id}`}
+                        onClick={() => setMobileNavOpen(false)}
+                        className="flex h-7 items-center justify-between rounded px-2 text-xs text-sidebar-foreground/80 hover:bg-sidebar-accent/60"
+                      >
+                        <span className="truncate">{list.title}</span>
+                        <span className="text-[10px] text-muted-foreground">{count}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </React.Fragment>
+          );
+        })}
         </div>
 
         <p className="mt-8 px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">

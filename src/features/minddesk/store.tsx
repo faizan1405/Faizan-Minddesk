@@ -1,10 +1,17 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTheme } from "next-themes";
 
-import { initialDeskData } from "./seed";
-import type { DeskData } from "./types";
+import { initialDeskData, initialTaskLists } from "./seed";
+import type { DeskData, TaskItem, TaskList } from "./types";
+import { useUIStore } from "@/stores/ui-store";
 
 const STORAGE_KEY = "minddesk-prototype-v1";
 
@@ -30,7 +37,10 @@ export function MindDeskProvider({ children }: { children: ReactNode }) {
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed: unknown = JSON.parse(saved);
-        if (isDeskData(parsed)) setData(parsed);
+        if (isDeskData(parsed)) {
+          const migrated = migrateDeskData(parsed);
+          setData(migrated);
+        }
       }
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
@@ -45,8 +55,9 @@ export function MindDeskProvider({ children }: { children: ReactNode }) {
     if (ready) {
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        useUIStore.getState().setSaveStatus("saved");
       } catch {
-        // Editing remains available when local browser storage is unavailable.
+        useUIStore.getState().setSaveStatus("offline");
       }
     }
   }, [data, existing, ready, setTheme]);
@@ -71,8 +82,53 @@ export function MindDeskProvider({ children }: { children: ReactNode }) {
 
 export function useDeskData() {
   const context = useContext(DeskContext);
-  if (!context) throw new Error("useDeskData must be rendered inside MindDeskProvider");
+  if (!context)
+    throw new Error("useDeskData must be rendered inside MindDeskProvider");
   return context;
+}
+
+export function migrateDeskData(candidate: DeskData): DeskData {
+  const lists: TaskList[] =
+    Array.isArray(candidate.taskLists) && candidate.taskLists.length > 0
+      ? [...candidate.taskLists].sort((a, b) => a.order - b.order)
+      : initialTaskLists;
+
+  const defaultListId = lists[0]?.id || "list-my-tasks";
+
+  const migratedTasks: TaskItem[] = candidate.tasks.map((task, index) => {
+    let assignedListId = task.listId;
+    if (!assignedListId || !lists.some((l) => l.id === assignedListId)) {
+      if (task.projectId === "launch") {
+        assignedListId = "list-projects";
+      } else if (task.projectId === "fieldnotes") {
+        assignedListId = "list-skills";
+      } else if (task.projectId === "personal") {
+        assignedListId = "list-routine";
+      } else {
+        assignedListId = defaultListId;
+      }
+    }
+
+    return {
+      ...task,
+      listId: assignedListId,
+      order: typeof task.order === "number" ? task.order : index,
+      note: task.note ?? "",
+      subtasks: Array.isArray(task.subtasks)
+        ? task.subtasks.map((s, sIdx) => ({
+            ...s,
+            order: typeof s.order === "number" ? s.order : sIdx,
+          }))
+        : [],
+    };
+  });
+
+  return {
+    ...candidate,
+    version: 2,
+    taskLists: lists,
+    tasks: migratedTasks,
+  };
 }
 
 function isDeskData(value: unknown): value is DeskData {

@@ -199,15 +199,31 @@
 .minddesk-map-node[data-color="blue"] { border-color: color-mix(in oklab, var(--sky-ink) 25%, var(--border)); background: var(--sky); color: var(--sky-ink); }
 .minddesk-map-node.selected { outline: 2px solid var(--ring); outline-offset: 2px; }
 .minddesk-note-editor .ProseMirror { min-height: 55vh; outline: none; }
-.minddesk-note-editor .ProseMirror p { margin: 0.65rem 0; }
-.minddesk-note-editor .ProseMirror h1 { margin: 1.5rem 0 0.75rem; font-size: 1.85rem; font-weight: 650; line-height: 1.25; }
-.minddesk-note-editor .ProseMirror h2 { margin: 1.25rem 0 0.65rem; font-size: 1.45rem; font-weight: 650; line-height: 1.35; }
-.minddesk-note-editor .ProseMirror ul, .minddesk-note-editor .ProseMirror ol { padding-left: 1.5rem; }
-.minddesk-note-editor .ProseMirror blockquote { border-left: 2px solid var(--primary); margin: 1rem 0; padding-left: 1rem; color: var(--muted-foreground); }
-.minddesk-note-editor .ProseMirror pre { overflow-x: auto; border-radius: 0.5rem; background: var(--muted); padding: 0.9rem; font-family: ui-monospace, monospace; font-size: 0.85rem; line-height: 1.6; }
-.minddesk-note-editor .ProseMirror code { border-radius: 0.25rem; background: var(--muted); padding: 0.15rem 0.25rem; font-family: ui-monospace, monospace; font-size: 0.88em; }
+.minddesk-note-editor .ProseMirror p { margin: 0.5rem 0; line-height: 1.7; }
+.minddesk-note-editor .ProseMirror h1 { margin: 1.75rem 0 0.5rem; font-size: 1.875rem; font-weight: 700; line-height: 1.25; tracking: -0.025em; }
+.minddesk-note-editor .ProseMirror h2 { margin: 1.35rem 0 0.45rem; font-size: 1.45rem; font-weight: 650; line-height: 1.3; }
+.minddesk-note-editor .ProseMirror h3 { margin: 1.15rem 0 0.35rem; font-size: 1.2rem; font-weight: 600; line-height: 1.35; }
+.minddesk-note-editor .ProseMirror ul, .minddesk-note-editor .ProseMirror ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+.minddesk-note-editor .ProseMirror blockquote { border-left: 3px solid var(--primary); margin: 0.85rem 0; padding-left: 1rem; color: var(--muted-foreground); font-style: italic; }
+.minddesk-note-editor .ProseMirror pre { overflow-x: auto; border-radius: 0.75rem; background: var(--muted); padding: 1rem; font-family: ui-monospace, monospace; font-size: 0.875rem; line-height: 1.6; margin: 0.75rem 0; }
+.minddesk-note-editor .ProseMirror code { border-radius: 0.25rem; background: var(--muted); padding: 0.15rem 0.3rem; font-family: ui-monospace, monospace; font-size: 0.875em; }
 .minddesk-note-editor .ProseMirror pre code { background: transparent; padding: 0; }
-.minddesk-note-editor .ProseMirror p.is-editor-empty:first-child::before { float: left; height: 0; color: var(--muted-foreground); content: "Start writing…"; pointer-events: none; }
+.minddesk-note-editor .ProseMirror p.is-editor-empty:first-child::before { float: left; height: 0; color: var(--muted-foreground); content: "Type '/' for commands…"; pointer-events: none; opacity: 0.6; }
+/* Task List */
+.minddesk-note-editor .ProseMirror ul[data-type="taskList"] { list-style: none; padding-left: 0; margin: 0.5rem 0; }
+.minddesk-note-editor .ProseMirror li[data-type="taskItem"] { display: flex; align-items: flex-start; gap: 0.6rem; margin: 0.35rem 0; }
+.minddesk-note-editor .ProseMirror li[data-type="taskItem"] > label { user-select: none; margin-top: 0.2rem; cursor: pointer; }
+.minddesk-note-editor .ProseMirror li[data-type="taskItem"] > label input[type="checkbox"] { cursor: pointer; width: 1.05rem; height: 1.05rem; border-radius: 0.25rem; accent-color: var(--primary); }
+.minddesk-note-editor .ProseMirror li[data-type="taskItem"][data-checked="true"] > div { text-decoration: line-through; opacity: 0.6; }
+.minddesk-note-editor .ProseMirror li[data-type="taskItem"] > div { flex: 1; min-width: 0; }
+/* Tables */
+.minddesk-note-editor .ProseMirror table { border-collapse: collapse; margin: 1rem 0; width: 100%; table-layout: fixed; overflow: hidden; border-radius: 0.5rem; border: 1px solid var(--border); }
+.minddesk-note-editor .ProseMirror table td, .minddesk-note-editor .ProseMirror table th { min-width: 1em; border: 1px solid var(--border); padding: 0.5rem 0.75rem; vertical-align: top; box-sizing: border-box; position: relative; }
+.minddesk-note-editor .ProseMirror table th { font-weight: 600; text-align: left; background-color: var(--muted); }
+.minddesk-note-editor .ProseMirror table .selectedCell:after { z-index: 2; position: absolute; content: ""; left: 0; right: 0; top: 0; bottom: 0; background: rgba(140, 100, 240, 0.15); pointer-events: none; }
+.minddesk-note-editor .ProseMirror table .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: 0; width: 4px; z-index: 20; background-color: var(--primary); pointer-events: none; }
+/* Horizontal Rule */
+.minddesk-note-editor .ProseMirror hr { border: none; border-top: 1px solid var(--border); margin: 1.75rem 0; }
 .map-canvas { position: relative; height: min(68vh, 650px); min-height: 380px; overflow: hidden; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--background); }
 .map-canvas[data-theme="paper"] { --background: #f6f0e5; --card: #fffaf1; --foreground: #494235; --border: #dfd4c1; --primary: #8b7555; }
 .map-canvas[data-theme="midnight"] { --background: #20212a; --card: #292a35; --foreground: #f0edf6; --border: #414151; --primary: #b6a8ff; }
