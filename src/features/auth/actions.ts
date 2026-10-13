@@ -9,7 +9,16 @@ import {
   updatePasswordSchema,
 } from "@/features/auth/schemas";
 import { auth } from "@/lib/auth/auth";
-import { isAuthConfigured, sanitizeRedirectPath } from "@/lib/auth/env";
+import {
+  getAdminCredentials,
+  isAuthConfigured,
+  isDatabaseConfigured,
+  sanitizeRedirectPath,
+} from "@/lib/auth/env";
+import {
+  ADMIN_SESSION_COOKIE,
+  createAdminSessionToken,
+} from "@/lib/auth/admin";
 import { RECOVERY_TOKEN_COOKIE } from "@/lib/auth/middleware";
 import { ensureUserWorkspaceProvisioned } from "@/lib/auth/provisioning";
 import { getVerifiedSession } from "@/lib/auth/server";
@@ -85,6 +94,69 @@ export async function loginAction(
     };
   }
 
+  // 1. Single-owner Admin Mode (configured via environment variables)
+  const admin = getAdminCredentials();
+  if (admin) {
+    if (
+      parsed.data.email.toLowerCase() !== admin.email ||
+      parsed.data.password !== admin.password
+    ) {
+      return {
+        status: "error",
+        message: "Invalid email or password.",
+      };
+    }
+
+    let userId = "admin-faizan-user";
+    if (isDatabaseConfigured()) {
+      try {
+        const user = await prisma.user.upsert({
+          where: { email: admin.email },
+          update: { name: "Faizan" },
+          create: {
+            email: admin.email,
+            name: "Faizan",
+            emailVerified: true,
+          },
+        });
+        userId = user.id;
+
+        await ensureUserWorkspaceProvisioned(
+          {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            image: null,
+          },
+          prisma
+        );
+      } catch (dbErr) {
+        console.warn("DB user provisioning notice:", dbErr);
+      }
+    }
+
+    const cookieStore = await cookies();
+    const token = createAdminSessionToken(userId, admin.email);
+    cookieStore.set(ADMIN_SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60,
+    });
+    cookieStore.set("better-auth.session_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60,
+    });
+
+    const target = sanitizeRedirectPath(parsed.data.next, "/dashboard");
+    redirect(target);
+  }
+
+  // 2. Standard Database Authentication
   if (!isAuthConfigured()) {
     return {
       status: "error",
@@ -342,6 +414,11 @@ export async function updatePasswordAction(
 }
 
 export async function signOutAction(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.delete(ADMIN_SESSION_COOKIE);
+  cookieStore.delete("better-auth.session_token");
+  cookieStore.delete("__Secure-better-auth.session_token");
+
   if (isAuthConfigured()) {
     try {
       const reqHeaders = await headers();

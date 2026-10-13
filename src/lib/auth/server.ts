@@ -1,6 +1,14 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { auth, type SessionData } from "@/lib/auth/auth";
-import { isAuthConfigured } from "@/lib/auth/env";
+import {
+  getAdminCredentials,
+  isAuthConfigured,
+  isDatabaseConfigured,
+} from "@/lib/auth/env";
+import {
+  ADMIN_SESSION_COOKIE,
+  verifyAdminSessionToken,
+} from "@/lib/auth/admin";
 import { ensureUserWorkspaceProvisioned } from "@/lib/auth/provisioning";
 import { prisma } from "@/lib/db/prisma";
 import { AuthorizationError } from "@/lib/security/errors";
@@ -32,6 +40,73 @@ export async function getVerifiedSession(): Promise<SessionData | null> {
  * if needed.
  */
 export async function getVerifiedUser(): Promise<AuthUserSummary | null> {
+  const admin = getAdminCredentials();
+  if (admin) {
+    try {
+      const cookieStore = await cookies();
+      const token =
+        cookieStore.get(ADMIN_SESSION_COOKIE)?.value ||
+        cookieStore.get("better-auth.session_token")?.value;
+      const verified = verifyAdminSessionToken(token);
+
+      if (verified && verified.email.toLowerCase() === admin.email) {
+        if (isDatabaseConfigured()) {
+          try {
+            const profile = await prisma.profile.findFirst({
+              where: { email: admin.email },
+              select: {
+                id: true,
+                fullName: true,
+                avatarUrl: true,
+                defaultWorkspaceId: true,
+              },
+            });
+
+            if (profile && profile.defaultWorkspaceId) {
+              return {
+                id: profile.id,
+                email: admin.email,
+                fullName: profile.fullName || "Faizan",
+                avatarUrl: profile.avatarUrl,
+                defaultWorkspaceId: profile.defaultWorkspaceId,
+              };
+            }
+
+            const provisioned = await ensureUserWorkspaceProvisioned(
+              {
+                id: verified.userId,
+                email: admin.email,
+                name: "Faizan",
+                image: null,
+              },
+              prisma
+            );
+
+            return {
+              id: verified.userId,
+              email: admin.email,
+              fullName: provisioned.fullName || "Faizan",
+              avatarUrl: provisioned.avatarUrl,
+              defaultWorkspaceId: provisioned.defaultWorkspaceId,
+            };
+          } catch {
+            // DB query fallback
+          }
+        }
+
+        return {
+          id: verified.userId,
+          email: admin.email,
+          fullName: "Faizan",
+          avatarUrl: null,
+          defaultWorkspaceId: null,
+        };
+      }
+    } catch {
+      // Continue to Better Auth check
+    }
+  }
+
   const session = await getVerifiedSession();
   if (!session?.user) {
     return null;

@@ -16,6 +16,7 @@ interface LoginFormProps {
   nextPath?: string;
   initialError?: string;
   authConfigured?: boolean;
+  isAdminMode?: boolean;
   actionOverride?: (
     prevState: AuthActionState,
     formData: FormData
@@ -33,6 +34,7 @@ export function LoginForm({
   nextPath = "/dashboard",
   initialError,
   authConfigured = true,
+  isAdminMode = false,
   actionOverride,
 }: LoginFormProps) {
   const [state, formAction, isPending] = React.useActionState(
@@ -127,12 +129,14 @@ export function LoginForm({
           >
             Password
           </label>
-          <Link
-            href="/forgot-password"
-            className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 rounded"
-          >
-            Forgot password?
-          </Link>
+          {!isAdminMode && (
+            <Link
+              href="/forgot-password"
+              className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 rounded"
+            >
+              Forgot password?
+            </Link>
+          )}
         </div>
 
         <PasswordInput

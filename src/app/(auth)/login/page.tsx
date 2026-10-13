@@ -3,7 +3,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { LoginForm } from "@/features/auth/components/login-form";
-import { isAuthConfigured, sanitizeRedirectPath } from "@/lib/auth/env";
+import {
+  isAdminAuthConfigured,
+  isAuthConfigured,
+  sanitizeRedirectPath,
+} from "@/lib/auth/env";
 import { getVerifiedUser } from "@/lib/auth/server";
 
 export const metadata: Metadata = {
@@ -24,30 +28,44 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     redirect(nextPath);
   }
 
+  const isAdmin = isAdminAuthConfigured();
+  const isReady = isAdmin || isAuthConfigured();
+
   return (
     <AuthShell
       title="Welcome back"
-      subtitle="Sign in to access your tasks, notes, and mind maps."
+      subtitle={
+        isAdmin
+          ? "Sign in with your configured admin email and password."
+          : "Sign in to access your tasks, notes, and mind maps."
+      }
       footer={
-        <span>
-          Don&apos;t have an account?{" "}
-          <Link
-            href={
-              nextPath !== "/dashboard"
-                ? `/signup?next=${encodeURIComponent(nextPath)}`
-                : "/signup"
-            }
-            className="font-semibold text-primary hover:underline"
-          >
-            Create an account
-          </Link>
-        </span>
+        isAdmin ? (
+          <span className="text-foreground-muted text-xs">
+            Private single-owner workspace
+          </span>
+        ) : (
+          <span>
+            Don&apos;t have an account?{" "}
+            <Link
+              href={
+                nextPath !== "/dashboard"
+                  ? `/signup?next=${encodeURIComponent(nextPath)}`
+                  : "/signup"
+              }
+              className="font-semibold text-primary hover:underline"
+            >
+              Create an account
+            </Link>
+          </span>
+        )
       }
     >
       <LoginForm
         nextPath={nextPath}
         initialError={params.error}
-        authConfigured={isAuthConfigured()}
+        authConfigured={isReady}
+        isAdminMode={isAdmin}
       />
     </AuthShell>
   );

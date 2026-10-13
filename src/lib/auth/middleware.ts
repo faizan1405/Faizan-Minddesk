@@ -23,6 +23,7 @@ const GUEST_ONLY_PATHS = ["/login", "/signup", "/forgot-password"];
 export const BETTER_AUTH_SESSION_COOKIES = [
   "better-auth.session_token",
   "__Secure-better-auth.session_token",
+  "minddesk_admin_session",
 ] as const;
 
 export const RECOVERY_TOKEN_COOKIE = "minddesk_recovery_token";

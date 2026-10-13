@@ -157,3 +157,31 @@ export function sanitizeRedirectPath(
 
   return trimmed;
 }
+
+export interface AdminCredentials {
+  email: string;
+  password: string;
+}
+
+/**
+ * Checks whether static single-owner admin credentials are configured in
+ * environment variables (e.g. ADMIN_EMAIL and ADMIN_PASSWORD).
+ * When configured, this bypasses the need for SMTP or open public registrations.
+ */
+export function getAdminCredentials(): AdminCredentials | null {
+  const email = (process.env.ADMIN_EMAIL || process.env.AUTH_EMAIL)?.trim();
+  const password = (process.env.ADMIN_PASSWORD || process.env.AUTH_PASSWORD)?.trim();
+
+  if (!email || !password) {
+    return null;
+  }
+
+  return {
+    email: email.toLowerCase(),
+    password,
+  };
+}
+
+export function isAdminAuthConfigured(): boolean {
+  return getAdminCredentials() !== null;
+}

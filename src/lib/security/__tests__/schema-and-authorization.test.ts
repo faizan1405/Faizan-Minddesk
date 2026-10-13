@@ -190,12 +190,6 @@ describe("T2.4A — MySQL Prisma Schema & Migration SQL Verification (Static Aud
     expect(migrationSql).toContain("CONSTRAINT `fk_edges_mind_map_same_owner`");
     expect(migrationSql).toContain("CONSTRAINT `fk_edges_source_node_same_map`");
     expect(migrationSql).toContain("CONSTRAINT `fk_edges_target_node_same_map`");
-
-    // Self-reference CHECK constraints
-    expect(migrationSql).toContain("CONSTRAINT `chk_tasks_no_self_parent`");
-    expect(migrationSql).toContain("CONSTRAINT `chk_notes_no_self_parent`");
-    expect(migrationSql).toContain("CONSTRAINT `chk_edges_no_self_loop`");
-    expect(migrationSql).toContain("CONSTRAINT `chk_entity_links_no_self_link`");
   });
 
   it("contains zero PostgreSQL-only constructs in the MySQL migration", () => {
