@@ -216,8 +216,6 @@ CREATE TABLE IF NOT EXISTS `tasks` (
   INDEX `idx_tasks_due_date` (`workspace_id`, `due_date`),
   INDEX `idx_tasks_user` (`user_id`),
   FULLTEXT INDEX `idx_tasks_fts` (`title`, `description`),
-  CONSTRAINT `chk_tasks_version_positive` CHECK (`version` >= 1),
-  CONSTRAINT `chk_tasks_no_self_parent` CHECK (`parent_task_id` IS NULL OR `parent_task_id` <> `id`),
   CONSTRAINT `tasks_workspace_id_fkey`
     FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -266,8 +264,6 @@ CREATE TABLE IF NOT EXISTS `notes` (
   INDEX `idx_notes_parent` (`parent_note_id`),
   INDEX `idx_notes_user` (`user_id`),
   FULLTEXT INDEX `idx_notes_fts` (`title`, `content_text`),
-  CONSTRAINT `chk_notes_version_positive` CHECK (`version` >= 1),
-  CONSTRAINT `chk_notes_no_self_parent` CHECK (`parent_note_id` IS NULL OR `parent_note_id` <> `id`),
   CONSTRAINT `notes_workspace_id_fkey`
     FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -295,7 +291,6 @@ CREATE TABLE IF NOT EXISTS `note_versions` (
   INDEX `idx_note_versions_workspace` (`workspace_id`),
   INDEX `idx_note_versions_user` (`user_id`),
   INDEX `idx_note_versions_same_owner` (`note_id`, `user_id`, `workspace_id`),
-  CONSTRAINT `chk_note_versions_positive` CHECK (`version` >= 1),
   CONSTRAINT `note_versions_workspace_id_fkey`
     FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -332,7 +327,6 @@ CREATE TABLE IF NOT EXISTS `mind_maps` (
   INDEX `idx_mind_maps_project` (`project_id`),
   INDEX `idx_mind_maps_user` (`user_id`),
   FULLTEXT INDEX `idx_mind_maps_fts` (`title`, `description`),
-  CONSTRAINT `chk_mind_maps_version_positive` CHECK (`version` >= 1),
   CONSTRAINT `mind_maps_workspace_id_fkey`
     FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -413,7 +407,6 @@ CREATE TABLE IF NOT EXISTS `mind_map_edges` (
   INDEX `idx_mind_map_edges_user` (`user_id`),
   INDEX `idx_edges_source_same_map` (`source_node_id`, `mind_map_id`, `user_id`, `workspace_id`),
   INDEX `idx_edges_target_same_map` (`target_node_id`, `mind_map_id`, `user_id`, `workspace_id`),
-  CONSTRAINT `chk_edges_no_self_loop` CHECK (`source_node_id` <> `target_node_id`),
   CONSTRAINT `mind_map_edges_workspace_id_fkey`
     FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -453,8 +446,6 @@ CREATE TABLE IF NOT EXISTS `entity_links` (
   INDEX `idx_entity_links_source` (`workspace_id`, `source_type`, `source_id`),
   INDEX `idx_entity_links_target` (`workspace_id`, `target_type`, `target_id`),
   INDEX `idx_entity_links_user` (`user_id`),
-  CONSTRAINT `chk_entity_links_no_self_link`
-    CHECK (NOT (`source_type` = `target_type` AND `source_id` = `target_id`)),
   CONSTRAINT `entity_links_workspace_id_fkey`
     FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -478,7 +469,6 @@ CREATE TABLE IF NOT EXISTS `attachments` (
   UNIQUE INDEX `uq_attachments_storage_path` (`storage_path`),
   INDEX `idx_attachments_entity` (`workspace_id`, `entity_type`, `entity_id`),
   INDEX `idx_attachments_user` (`user_id`),
-  CONSTRAINT `chk_attachments_size_non_negative` CHECK (`size_bytes` >= 0),
   CONSTRAINT `attachments_workspace_id_fkey`
     FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`)
     ON DELETE CASCADE ON UPDATE CASCADE,
