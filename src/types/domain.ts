@@ -1,4 +1,4 @@
-export type SaveStatus = "idle" | "saved" | "saving" | "offline" | "conflict";
+export type SaveStatus = "idle" | "saved" | "saving" | "offline" | "conflict" | "error";
 
 export type EntityType = "task" | "note" | "mind_map" | "mind_map_node";
 

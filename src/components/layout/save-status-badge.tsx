@@ -43,6 +43,13 @@ const STATUS_CONFIG = {
     className: "text-danger border-danger/30 bg-danger/10",
     iconClassName: "text-danger",
   },
+  error: {
+    label: "Save failed — Retry",
+    icon: AlertTriangle,
+    className:
+      "text-rose-600 dark:text-rose-400 border-rose-500/30 bg-rose-500/10 cursor-pointer hover:bg-rose-500/20",
+    iconClassName: "text-rose-500",
+  },
 } as const;
 
 export function SaveStatusBadge() {
@@ -50,13 +57,25 @@ export function SaveStatusBadge() {
   const config = STATUS_CONFIG[saveStatus];
   const Icon = config.icon;
 
+  const handleClick = () => {
+    if (saveStatus === "error" || saveStatus === "offline") {
+      window.dispatchEvent(new CustomEvent("minddesk:sync-retry"));
+    }
+  };
+
   return (
     <div
       role="status"
       aria-live="polite"
       data-testid="save-status-badge"
+      onClick={handleClick}
+      title={
+        saveStatus === "error" || saveStatus === "offline"
+          ? "Click to retry syncing to cloud"
+          : undefined
+      }
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors select-none",
         config.className
       )}
     >
