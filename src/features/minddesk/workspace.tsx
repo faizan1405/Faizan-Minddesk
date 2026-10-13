@@ -724,20 +724,33 @@ export function DashboardView({
               All notes <ChevronRight />
             </Button>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {data.notes.slice(0, 2).map((note) => (
-              <button
-                key={note.id}
-                className="minddesk-panel min-h-40 p-4 text-left transition-colors hover:border-ring/50"
-                onClick={() => navigate("notes", note.id)}
-              >
-                <span className="grid size-8 place-items-center rounded-lg bg-brand-soft text-lg">{note.icon}</span>
-                <span className="mt-3 block truncate text-sm font-semibold">{note.title}</span>
-                <span className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{note.excerpt}</span>
-                <span className="mt-3 block text-[11px] text-muted-foreground">{note.updated}</span>
-              </button>
-            ))}
-          </div>
+          {data.notes.length === 0 ? (
+            <div className="minddesk-panel flex flex-col items-center justify-center p-6 text-center">
+              <span className="grid size-8 place-items-center rounded-lg bg-muted text-muted-foreground mb-2">
+                <FileText className="size-4" />
+              </span>
+              <p className="text-sm font-medium">No notes yet</p>
+              <p className="mt-1 text-xs text-muted-foreground">Capture thoughts, ideas, or meeting notes.</p>
+              <Button variant="ghost" size="sm" className="mt-3 gap-1 text-xs" onClick={() => navigate("notes")}>
+                <Plus className="size-3.5" /> Create a note
+              </Button>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {data.notes.slice(0, 2).map((note) => (
+                <button
+                  key={note.id}
+                  className="minddesk-panel min-h-40 p-4 text-left transition-colors hover:border-ring/50"
+                  onClick={() => navigate("notes", note.id)}
+                >
+                  <span className="grid size-8 place-items-center rounded-lg bg-brand-soft text-lg">{note.icon}</span>
+                  <span className="mt-3 block truncate text-sm font-semibold">{note.title}</span>
+                  <span className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{note.excerpt}</span>
+                  <span className="mt-3 block text-[11px] text-muted-foreground">{note.updated}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="min-w-0">

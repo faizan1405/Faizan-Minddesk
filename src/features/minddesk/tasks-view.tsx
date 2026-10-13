@@ -58,7 +58,7 @@ export function TasksView({
   filter: initialFilter = "Today",
   initialTaskId,
 }: TasksViewProps = {}) {
-  const { data, update, selectedItem, setSelectedItem } = useDeskData();
+  const { data, update, selectedItem, setSelectedItem, registerDeletedId } = useDeskData();
   const searchParams = useSearchParams();
 
   // Active view filter: "All", "Today", "Starred", "Completed", or a specific listId
@@ -323,6 +323,8 @@ export function TasksView({
     const deleted = data.tasks.find((t) => t.id === taskId);
     if (!deleted) return;
 
+    registerDeletedId("task", taskId);
+
     update((curr) => ({
       ...curr,
       tasks: curr.tasks.filter((t) => t.id !== taskId),
@@ -456,6 +458,8 @@ export function TasksView({
 
   function handleDeleteList(listId: string) {
     if (taskLists.length <= 1) return; // Cannot delete last remaining list
+    const tasksInList = data.tasks.filter((t) => t.listId === listId);
+    tasksInList.forEach((t) => registerDeletedId("task", t.id));
     update((curr) => ({
       ...curr,
       taskLists: (curr.taskLists || initialTaskLists).filter((l) => l.id !== listId),

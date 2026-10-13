@@ -44,24 +44,26 @@ describe("Lovable Frontend Components & Interactions", () => {
     expect(screen.getByRole("heading", { name: "Today" })).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Add a task and press Enter…/i)).toBeInTheDocument();
 
-    // Toggle a task's completion
-    const completeBtns = screen.getAllByRole("button", { name: /Complete/i });
-    expect(completeBtns.length).toBeGreaterThan(0);
-    fireEvent.click(completeBtns[0]);
+    // Add a task
+    const input = screen.getByPlaceholderText(/Add a task and press Enter…/i);
+    fireEvent.change(input, { target: { value: "Ship Lovable Integration" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByText("Ship Lovable Integration")).toBeInTheDocument();
+
+    // Toggle task completion
+    const completeBtn = screen.getByRole("button", { name: /Complete Ship Lovable Integration/i });
+    fireEvent.click(completeBtn);
 
     // Switch filter tab to Completed
     const completedTab = screen.getByRole("button", { name: "Completed" });
     fireEvent.click(completedTab);
     expect(screen.getByRole("heading", { name: "Completed" })).toBeInTheDocument();
 
-    // Switch back to Today and add a task
+    // Switch back to Today
     const todayTab = screen.getByRole("button", { name: "Today" });
     fireEvent.click(todayTab);
-    const input = screen.getByPlaceholderText(/Add a task and press Enter…/i);
-    fireEvent.change(input, { target: { value: "Ship Lovable Integration" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(screen.getByText("Ship Lovable Integration")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Today" })).toBeInTheDocument();
   });
 
   it("renders NotesView, filters notes via search input, and creates a new note", () => {
@@ -81,7 +83,7 @@ describe("Lovable Frontend Components & Interactions", () => {
     expect(screen.getByRole("button", { name: /All notes/i })).toBeInTheDocument();
   });
 
-  it("renders ProjectsView with active projects and opens project details", () => {
+  it("renders ProjectsView, creates a project, and opens project details", () => {
     render(
       <MindDeskProvider>
         <ProjectsView />
@@ -89,11 +91,13 @@ describe("Lovable Frontend Components & Interactions", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Projects" })).toBeInTheDocument();
-    expect(screen.getByText("Northstar Studio")).toBeInTheDocument();
+    expect(screen.getByText("No projects yet")).toBeInTheDocument();
 
-    // Click project card to view details
-    fireEvent.click(screen.getByText("Northstar Studio"));
-    expect(screen.getByDisplayValue("Northstar Studio")).toBeInTheDocument();
+    // Click to create a new project
+    const createProjectBtn = screen.getByRole("button", { name: "Create your first project" });
+    fireEvent.click(createProjectBtn);
+
+    expect(screen.getByDisplayValue("New project")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Projects/i })).toBeInTheDocument();
   });
 

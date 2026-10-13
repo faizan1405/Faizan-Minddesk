@@ -4,6 +4,7 @@ import { MindDeskProvider } from "@/features/minddesk/store";
 import { NotesView } from "../notes-view";
 import { NoteEditor } from "../note-editor";
 import type { NoteItem } from "../../types";
+import { initialDeskData } from "../../seed";
 
 describe("MindDesk Notion-Style Notes & Document Editor", () => {
   beforeEach(() => {
@@ -34,14 +35,25 @@ describe("MindDesk Notion-Style Notes & Document Editor", () => {
   });
 
   it("filters notes by title and content body accurately", () => {
+    const sampleNote: NoteItem = {
+      ...mockNote,
+      id: "note-visual-principles",
+      title: "Northstar — visual principles",
+    };
+
     render(
-      <MindDeskProvider>
+      <MindDeskProvider
+        initialData={{
+          ...initialDeskData,
+          notes: [sampleNote],
+        }}
+      >
         <NotesView />
       </MindDeskProvider>,
     );
 
     const searchInput = screen.getByPlaceholderText("Find a note…");
-    // Seed note has "Northstar — visual principles"
+    // Search for note
     fireEvent.change(searchInput, { target: { value: "visual principles" } });
     expect(screen.getByText(/Northstar — visual principles/i)).toBeInTheDocument();
 
@@ -123,15 +135,25 @@ describe("MindDesk Notion-Style Notes & Document Editor", () => {
   });
 
   it("renders breadcrumb navigation when document has a parent document", () => {
+    const parentNote: NoteItem = {
+      ...mockNote,
+      id: "parent-note-1",
+      title: "Parent Engineering Roadmap",
+    };
     const childNote: NoteItem = {
       ...mockNote,
       id: "child-note-1",
       title: "Marketing Roadmap Sub-Page",
-      parentId: "note-1", // seed note-1 is "A softer start to the day"
+      parentId: "parent-note-1",
     };
 
     render(
-      <MindDeskProvider>
+      <MindDeskProvider
+        initialData={{
+          ...initialDeskData,
+          notes: [parentNote, childNote],
+        }}
+      >
         <NoteEditor
           note={childNote}
           onBack={vi.fn()}
@@ -143,7 +165,7 @@ describe("MindDesk Notion-Style Notes & Document Editor", () => {
       </MindDeskProvider>,
     );
 
-    expect(screen.getByText("A softer start to the day")).toBeInTheDocument();
+    expect(screen.getByText("Parent Engineering Roadmap")).toBeInTheDocument();
     expect(screen.getByText("Marketing Roadmap Sub-Page")).toBeInTheDocument();
   });
 });

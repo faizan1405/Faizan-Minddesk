@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronLeft, FolderOpen, Plus, Search, Star } from "lucide-react";
+import { ChevronLeft, FolderOpen, Plus, Search, Star, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useDeskData } from "./store";
@@ -166,45 +166,54 @@ export function ProjectsView({ initialProjectId }: { initialProjectId?: string }
           onChange={(event) => setQuery(event.target.value)}
         />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {projects.map((project) => {
-          const taskCount = data.tasks.filter((task) => task.projectId === project.id && !task.complete).length;
-          const noteCount = data.notes.filter((note) => note.projectId === project.id).length;
-          return (
-            <button
-              key={project.id}
-              onClick={() => setActiveId(project.id)}
-              className="minddesk-panel group min-h-48 p-5 text-left transition-colors hover:border-ring/50"
-            >
-              <span
-                className={`mb-5 grid size-10 place-items-center rounded-xl text-lg ${
-                  project.hue === "mint"
-                    ? "bg-sage text-sage-ink"
-                    : project.hue === "amber"
-                      ? "bg-coral text-coral-ink"
-                      : project.hue === "blue"
-                        ? "bg-sky text-sky-ink"
-                        : "bg-brand-soft text-brand-ink"
-                }`}
+      {projects.length === 0 ? (
+        <EmptyState
+          icon={<FolderOpen className="size-6" />}
+          title={query ? "No projects match your search" : "No projects yet"}
+          action="Create your first project"
+          onAction={createProject}
+        />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {projects.map((project) => {
+            const taskCount = data.tasks.filter((task) => task.projectId === project.id && !task.complete).length;
+            const noteCount = data.notes.filter((note) => note.projectId === project.id).length;
+            return (
+              <button
+                key={project.id}
+                onClick={() => setActiveId(project.id)}
+                className="minddesk-panel group min-h-48 p-5 text-left transition-colors hover:border-ring/50"
               >
-                {project.icon}
-              </span>
-              <span className="block text-base font-semibold">{project.name}</span>
-              <span className="mt-2 block text-sm leading-6 text-muted-foreground">{project.description}</span>
-              <span className="mt-5 flex gap-4 text-xs text-muted-foreground">
-                <span>{taskCount} open tasks</span>
-                <span>{noteCount} notes</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
+                <span
+                  className={`mb-5 grid size-10 place-items-center rounded-xl text-lg ${
+                    project.hue === "mint"
+                      ? "bg-sage text-sage-ink"
+                      : project.hue === "amber"
+                        ? "bg-coral text-coral-ink"
+                        : project.hue === "blue"
+                          ? "bg-sky text-sky-ink"
+                          : "bg-brand-soft text-brand-ink"
+                  }`}
+                >
+                  {project.icon}
+                </span>
+                <span className="block text-base font-semibold">{project.name}</span>
+                <span className="mt-2 block text-sm leading-6 text-muted-foreground">{project.description}</span>
+                <span className="mt-5 flex gap-4 text-xs text-muted-foreground">
+                  <span>{taskCount} open tasks</span>
+                  <span>{noteCount} notes</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
 
 export function MapsView({ favoriteOnly = false, initialMapId }: { favoriteOnly?: boolean; initialMapId?: string } = {}) {
-  const { data, update, selectedItem, setSelectedItem } = useDeskData();
+  const { data, update, selectedItem, setSelectedItem, registerDeletedId } = useDeskData();
   const [mapId, setMapId] = useState<string | null>(() => {
     const candidate = initialMapId ?? selectedItem ?? null;
     return candidate && data.maps.some((item) => item.id === candidate) ? candidate : null;
@@ -261,21 +270,38 @@ export function MapsView({ favoriteOnly = false, initialMapId }: { favoriteOnly?
               }
             />
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={activeMap.starred ? "Remove map from favorites" : "Add map to favorites"}
-            onClick={() =>
-              update((current) => ({
-                ...current,
-                maps: current.maps.map((item) =>
-                  item.id === activeMap.id ? { ...item, starred: !item.starred } : item,
-                ),
-              }))
-            }
-          >
-            <Star className={`size-4 ${activeMap.starred ? "fill-primary text-primary" : ""}`} />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={activeMap.starred ? "Remove map from favorites" : "Add map to favorites"}
+              onClick={() =>
+                update((current) => ({
+                  ...current,
+                  maps: current.maps.map((item) =>
+                    item.id === activeMap.id ? { ...item, starred: !item.starred } : item,
+                  ),
+                }))
+              }
+            >
+              <Star className={`size-4 ${activeMap.starred ? "fill-primary text-primary" : ""}`} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Delete mind map"
+              onClick={() => {
+                registerDeletedId("map", activeMap.id);
+                update((current) => ({
+                  ...current,
+                  maps: current.maps.filter((item) => item.id !== activeMap.id),
+                }));
+                setMapId(null);
+              }}
+            >
+              <Trash2 className="size-4 text-muted-foreground hover:text-destructive" />
+            </Button>
+          </div>
         </div>
         <MindMapCanvas
           nodes={activeMap.nodes}
@@ -334,51 +360,60 @@ export function MapsView({ favoriteOnly = false, initialMapId }: { favoriteOnly?
           onChange={(event) => setQuery(event.target.value)}
         />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {maps.map((map) => (
-          <button
-            key={map.id}
-            className="minddesk-panel group text-left transition-colors hover:border-ring/50"
-            onClick={() => setMapId(map.id)}
-          >
-            <div className="relative h-40 overflow-hidden rounded-t-xl border-b border-border bg-background">
-              <div
-                className="absolute inset-0 opacity-65"
-                style={{
-                  backgroundImage: "radial-gradient(var(--border) 0.8px, transparent 0.8px)",
-                  backgroundSize: "16px 16px",
-                }}
-              />
-              <div className="absolute left-1/2 top-1/2 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-xl border border-primary/20 bg-brand-soft text-brand-ink">
-                ✳
-              </div>
-              <div className="absolute left-[22%] top-[24%] h-px w-[26%] rotate-12 bg-primary/40" />
-              <div className="absolute left-[55%] top-[27%] h-px w-[22%] -rotate-12 bg-sage-ink/40" />
-              <div className="absolute left-[24%] top-[74%] h-px w-[25%] -rotate-12 bg-coral-ink/40" />
-              <span className="absolute left-[9%] top-[16%] rounded-md border border-border bg-card px-2 py-1 text-[10px]">
-                Focus
-              </span>
-              <span className="absolute right-[8%] top-[17%] rounded-md border border-border bg-card px-2 py-1 text-[10px]">
-                Rituals
-              </span>
-              <span className="absolute bottom-[12%] left-[10%] rounded-md border border-border bg-card px-2 py-1 text-[10px]">
-                Space
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3 p-4">
-              <div className="min-w-0">
-                <span className="block truncate text-sm font-semibold">{map.title}</span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  {map.nodes.length} ideas · {map.updated}
+      {maps.length === 0 ? (
+        <EmptyState
+          icon={<span className="text-xl">✳</span>}
+          title={query ? "No mind maps match your search" : "No mind maps yet"}
+          action="Create your first mind map"
+          onAction={createMap}
+        />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {maps.map((map) => (
+            <button
+              key={map.id}
+              className="minddesk-panel group text-left transition-colors hover:border-ring/50"
+              onClick={() => setMapId(map.id)}
+            >
+              <div className="relative h-40 overflow-hidden rounded-t-xl border-b border-border bg-background">
+                <div
+                  className="absolute inset-0 opacity-65"
+                  style={{
+                    backgroundImage: "radial-gradient(var(--border) 0.8px, transparent 0.8px)",
+                    backgroundSize: "16px 16px",
+                  }}
+                />
+                <div className="absolute left-1/2 top-1/2 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-xl border border-primary/20 bg-brand-soft text-brand-ink">
+                  ✳
+                </div>
+                <div className="absolute left-[22%] top-[24%] h-px w-[26%] rotate-12 bg-primary/40" />
+                <div className="absolute left-[55%] top-[27%] h-px w-[22%] -rotate-12 bg-sage-ink/40" />
+                <div className="absolute left-[24%] top-[74%] h-px w-[25%] -rotate-12 bg-coral-ink/40" />
+                <span className="absolute left-[9%] top-[16%] rounded-md border border-border bg-card px-2 py-1 text-[10px]">
+                  Focus
+                </span>
+                <span className="absolute right-[8%] top-[17%] rounded-md border border-border bg-card px-2 py-1 text-[10px]">
+                  Rituals
+                </span>
+                <span className="absolute bottom-[12%] left-[10%] rounded-md border border-border bg-card px-2 py-1 text-[10px]">
+                  Space
                 </span>
               </div>
-              <Star
-                className={`size-4 shrink-0 ${map.starred ? "fill-primary text-primary" : "text-muted-foreground"}`}
-              />
-            </div>
-          </button>
-        ))}
-      </div>
+              <div className="flex items-center justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <span className="block truncate text-sm font-semibold">{map.title}</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {map.nodes.length} ideas · {map.updated}
+                  </span>
+                </div>
+                <Star
+                  className={`size-4 shrink-0 ${map.starred ? "fill-primary text-primary" : "text-muted-foreground"}`}
+                />
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

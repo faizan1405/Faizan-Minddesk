@@ -58,7 +58,7 @@ export interface NoteItem {
   content: string;
   icon: string;
   updated: string;
-  projectId: string;
+  projectId?: string;
   starred: boolean;
   parentId?: string | null;
   coverImage?: string | null;

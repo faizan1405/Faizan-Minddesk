@@ -5,6 +5,8 @@ import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import { useDeskData } from "../store";
+import { useUIStore } from "@/stores/ui-store";
+import type { SaveStatus } from "@/types/domain";
 import type { NoteItem } from "../types";
 import { createEditorExtensions } from "./extensions/editor-extensions";
 import type { SlashCommandItem, SlashContext } from "./types";
@@ -39,10 +41,11 @@ export function NoteEditor({
   onDuplicateNote,
   onDeleteNote,
 }: NoteEditorProps) {
-  const { data, update } = useDeskData();
+  const { data, update, persistImmediately } = useDeskData();
+  const serverSaveStatus = useUIStore((s) => s.saveStatus);
+  const [isLocalDirty, setIsLocalDirty] = useState(false);
+  const effectiveSaveStatus: SaveStatus = isLocalDirty ? "saving" : serverSaveStatus;
 
-  // Save status state
-  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
 
@@ -201,7 +204,7 @@ export function NoteEditor({
   // Flush debounced save
   const flushSave = useCallback(
     (jsonDoc: object, plainText: string) => {
-      setSaveStatus("saved");
+      setIsLocalDirty(false);
       const serialized = JSON.stringify(jsonDoc);
       const excerpt = plainText.replace(/\s+/g, " ").trim().slice(0, 110) || "Empty note";
       onUpdate({ content: serialized, excerpt });
@@ -221,9 +224,21 @@ export function NoteEditor({
       attributes: {
         class: "minddesk-note-editor min-h-[55vh] text-base leading-relaxed focus:outline-none",
       },
+      handleDOMEvents: {
+        blur: () => {
+          if (saveTimeoutRef.current && editorRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = null;
+            flushSave(editorRef.current.getJSON(), editorRef.current.getText());
+            void persistImmediately();
+          }
+          return false;
+        },
+      },
     },
     onUpdate: ({ editor: current }) => {
-      setSaveStatus("saving");
+      setIsLocalDirty(true);
+      useUIStore.getState().setSaveStatus("saving");
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
@@ -233,7 +248,7 @@ export function NoteEditor({
 
       saveTimeoutRef.current = setTimeout(() => {
         flushSave(jsonDoc, text);
-      }, 700);
+      }, 300);
     },
   });
   editorRef.current = editor;
@@ -243,12 +258,14 @@ export function NoteEditor({
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
         if (editor) {
           flushSave(editor.getJSON(), editor.getText());
         }
+        void persistImmediately();
       }
     };
-  }, [editor, flushSave]);
+  }, [editor, flushSave, persistImmediately]);
 
   // Export functions
   const handleExportMarkdown = () => {
@@ -273,7 +290,20 @@ export function NoteEditor({
     <section className="relative mx-auto min-h-[calc(100vh-4rem)] w-full max-w-4xl px-4 pb-32 pt-6 sm:px-10 sm:pt-9">
       {/* Top Navigation Bar */}
       <div className="mb-6 flex items-center justify-between gap-3">
-        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5 -ml-2 text-xs font-medium">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            if (saveTimeoutRef.current && editor) {
+              clearTimeout(saveTimeoutRef.current);
+              saveTimeoutRef.current = null;
+              flushSave(editor.getJSON(), editor.getText());
+            }
+            void persistImmediately();
+            onBack();
+          }}
+          className="gap-1.5 -ml-2 text-xs font-medium"
+        >
           <ChevronLeft className="size-4" /> All notes
         </Button>
       </div>
@@ -289,7 +319,7 @@ export function NoteEditor({
         onDelete={onDeleteNote}
         onExportMarkdown={handleExportMarkdown}
         onExportJson={handleExportJson}
-        saveStatus={saveStatus}
+        saveStatus={effectiveSaveStatus}
       />
 
       {/* Collapsible Table of Contents */}

@@ -36,9 +36,9 @@ describe("Calendar Storage Service", () => {
   it("returns sanitized seed data when localStorage is uninitialized", () => {
     const store = loadMindDeskStore();
     expect(store).toBeDefined();
-    expect(store.events.length).toBeGreaterThan(0);
+    expect(store.events).toEqual([]);
+    expect(store.tasks).toEqual([]);
     expect(store.categories.length).toBeGreaterThan(0);
-    expect(store.tasks.length).toBeGreaterThan(0);
     expect(store.settings).toBeDefined();
     expect(store.settings.defaultView).toBe("month");
   });

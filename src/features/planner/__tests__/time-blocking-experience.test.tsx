@@ -310,18 +310,35 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
   it("tracks Today's Top 3 Priorities scheduling status explicitly", async () => {
     renderPlannerWorkspace();
 
-    // Priority shelf shows scheduled statuses for top priorities (2 scheduled, 1 not scheduled)
+    // 1. Initially, clean state shows empty priorities shelf
+    expect(screen.getByText("No top priorities selected for this day")).toBeInTheDocument();
+
+    // 2. Create a task in Task Library
+    const newTaskBtn = screen.getByRole("button", { name: /New Task/i });
+    fireEvent.click(newTaskBtn);
+    const taskInput = screen.getByPlaceholderText(/Task title/i);
+    fireEvent.change(taskInput, { target: { value: "Priority Focus Item" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Add Task$/i }));
+
     await waitFor(() => {
-      expect(screen.getAllByText(/Scheduled at/i).length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByText("Priority Focus Item")).toBeInTheDocument();
+    });
+
+    // 3. Add to top priorities via the target icon
+    const addToPriorityBtn = screen.getByTitle("Add to top priorities");
+    fireEvent.click(addToPriorityBtn);
+
+    // 4. Priority card appears on shelf with "Not scheduled"
+    await waitFor(() => {
       expect(screen.getByText("Not scheduled")).toBeInTheDocument();
     });
 
-    // Click Schedule button on the unscheduled priority shelf card
+    // 5. Click Schedule button on the priority card
     const priorityCard = screen.getByText("Not scheduled").closest(".group")!;
     const priorityScheduleBtn = within(priorityCard as HTMLElement).getByRole("button", { name: /^Schedule$/i });
     fireEvent.click(priorityScheduleBtn);
 
-    // Modal opens -> click Create Block
+    // 6. Modal opens -> click Create Block
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
@@ -329,9 +346,9 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
     const createBtn = within(modal).getByRole("button", { name: /Create Block/i });
     fireEvent.click(createBtn);
 
-    // All 3 priorities are now scheduled
+    // 7. Priority is now scheduled
     await waitFor(() => {
-      expect(screen.getAllByText(/Scheduled at/i).length).toBe(3);
+      expect(screen.getByText(/Scheduled at/i)).toBeInTheDocument();
     });
   });
 });

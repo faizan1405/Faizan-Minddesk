@@ -11,7 +11,7 @@ describe("MindDesk Local Prototype Backup Utility", () => {
     expect(parsed.app).toBe("MindDesk");
     expect(parsed.version).toBeGreaterThanOrEqual(2);
     expect(parsed.exportedAt).toBeDefined();
-    expect(parsed.data.tasks.length).toBeGreaterThan(0);
+    expect(Array.isArray(parsed.data.tasks)).toBe(true);
   });
 
   it("safely restores valid backup JSON", () => {

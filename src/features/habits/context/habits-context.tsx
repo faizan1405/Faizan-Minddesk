@@ -95,18 +95,31 @@ export interface HabitsContextType {
 
 const HabitsContext = createContext<HabitsContextType | null>(null);
 
-export function HabitsProvider({ children }: { children: React.ReactNode }) {
+export function HabitsProvider({
+  children,
+  initialHabits,
+  initialCompletions,
+  initialRoutines,
+}: {
+  children: React.ReactNode;
+  initialHabits?: Habit[];
+  initialCompletions?: HabitCompletion[];
+  initialRoutines?: Routine[];
+}) {
   const calendarContext = useCalendar();
   const deskContext = useOptionalDeskData();
 
-  const [localHabits, setLocalHabits] = useState<Habit[]>(getInitialDefaultHabits);
-  const [localCompletions, setLocalCompletions] = useState<HabitCompletion[]>(getInitialDefaultCompletions);
+  const [localHabits, setLocalHabits] = useState<Habit[]>(() => initialHabits ?? getInitialDefaultHabits());
+  const [localCompletions, setLocalCompletions] = useState<HabitCompletion[]>(() => initialCompletions ?? getInitialDefaultCompletions());
   const [localProgressLogs, setLocalProgressLogs] = useState<HabitProgressLog[]>([]);
-  const [localRoutines, setLocalRoutines] = useState<Routine[]>(getInitialDefaultRoutines);
+  const [localRoutines, setLocalRoutines] = useState<Routine[]>(() => initialRoutines ?? getInitialDefaultRoutines());
   const [localSessions, setLocalSessions] = useState<RoutineSession[]>([]);
 
-  // Initialize from localStorage
+  // Initialize from localStorage (only if not explicitly provided via props)
   useEffect(() => {
+    if (initialHabits !== undefined || initialRoutines !== undefined) {
+      return;
+    }
     const store = loadMindDeskStore();
     if (store.habits && Array.isArray(store.habits) && store.habits.length > 0) {
       setLocalHabits(store.habits);
@@ -139,41 +152,50 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener(STORAGE_EVENT_NAME, handleStorageChange);
       window.removeEventListener("storage", handleStorageChange);
     };
-  }, []);
+  }, [initialHabits, initialRoutines]);
 
   const deskData = deskContext?.data;
   const updateDeskData = deskContext?.update;
 
   const habits = useMemo(() => {
-    if (deskData?.habits && Array.isArray(deskData.habits)) {
+    if (initialHabits !== undefined) {
+      return localHabits;
+    }
+    if (deskData?.habits && Array.isArray(deskData.habits) && deskData.habits.length > 0) {
       return deskData.habits;
     }
     return localHabits;
-  }, [deskData?.habits, localHabits]);
+  }, [initialHabits, deskData?.habits, localHabits]);
 
   const habitCompletions = useMemo(() => {
-    if (deskData?.habitCompletions && Array.isArray(deskData.habitCompletions)) {
+    if (initialCompletions !== undefined) {
+      return localCompletions;
+    }
+    if (deskData?.habitCompletions && Array.isArray(deskData.habitCompletions) && deskData.habitCompletions.length > 0) {
       return deskData.habitCompletions;
     }
     return localCompletions;
-  }, [deskData?.habitCompletions, localCompletions]);
+  }, [initialCompletions, deskData?.habitCompletions, localCompletions]);
 
   const habitProgressLogs = useMemo(() => {
-    if (deskData?.habitProgressLogs && Array.isArray(deskData.habitProgressLogs)) {
+    if (deskData?.habitProgressLogs && Array.isArray(deskData.habitProgressLogs) && deskData.habitProgressLogs.length > 0) {
       return deskData.habitProgressLogs;
     }
     return localProgressLogs;
   }, [deskData?.habitProgressLogs, localProgressLogs]);
 
   const routines = useMemo(() => {
-    if (deskData?.routines && Array.isArray(deskData.routines)) {
+    if (initialRoutines !== undefined) {
+      return localRoutines;
+    }
+    if (deskData?.routines && Array.isArray(deskData.routines) && deskData.routines.length > 0) {
       return deskData.routines;
     }
     return localRoutines;
-  }, [deskData?.routines, localRoutines]);
+  }, [initialRoutines, deskData?.routines, localRoutines]);
 
   const routineSessions = useMemo(() => {
-    if (deskData?.routineSessions && Array.isArray(deskData.routineSessions)) {
+    if (deskData?.routineSessions && Array.isArray(deskData.routineSessions) && deskData.routineSessions.length > 0) {
       return deskData.routineSessions;
     }
     return localSessions;

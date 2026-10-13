@@ -8,6 +8,9 @@ import {
 } from "@/lib/sync/sync-repository";
 import { AuthorizationError } from "@/lib/security/errors";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
   try {
     const user = await getVerifiedUser();
@@ -35,13 +38,20 @@ export async function GET() {
     const actor = { id: user.id, email: user.email };
     const deskData = await getWorkspaceDeskData(prisma, actor, workspaceId);
 
-    return NextResponse.json({
-      success: true,
-      data: deskData,
-      workspaceId,
-      userId: user.id,
-      serverTimestamp: Date.now(),
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        data: deskData,
+        workspaceId,
+        userId: user.id,
+        serverTimestamp: Date.now(),
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
+      }
+    );
   } catch (err: unknown) {
     if (err instanceof AuthorizationError) {
       return NextResponse.json(

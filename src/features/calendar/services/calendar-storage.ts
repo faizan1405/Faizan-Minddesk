@@ -46,7 +46,7 @@ export function loadMindDeskStore(): MindDeskStoreData {
       scheduledBlocks: Array.isArray(parsed.scheduledBlocks)
         ? parsed.scheduledBlocks
         : initial.scheduledBlocks,
-      tasks: Array.isArray(parsed.tasks) && parsed.tasks.length > 0 ? parsed.tasks : initial.tasks,
+      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
       dailyPlans:
         typeof parsed.dailyPlans === "object" && parsed.dailyPlans !== null
           ? parsed.dailyPlans
@@ -57,8 +57,8 @@ export function loadMindDeskStore(): MindDeskStoreData {
           : typeof parsed.calendarSettings === "object" && parsed.calendarSettings !== null
           ? { ...initial.settings, ...parsed.calendarSettings }
           : initial.settings,
-      projects: Array.isArray(parsed.projects) && parsed.projects.length > 0 ? parsed.projects : initial.projects,
-      notes: Array.isArray(parsed.notes) && parsed.notes.length > 0 ? parsed.notes : initial.notes,
+      projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+      notes: Array.isArray(parsed.notes) ? parsed.notes : [],
       maps: Array.isArray(parsed.maps) ? parsed.maps : undefined,
       taskLists: Array.isArray(parsed.taskLists) ? parsed.taskLists : undefined,
       theme: parsed.theme === "dark" ? "dark" : "light",

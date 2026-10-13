@@ -8,10 +8,19 @@ import {
   CloudOff,
   Loader2,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
+import type { SaveStatus } from "@/types/domain";
 
-const STATUS_CONFIG = {
+interface StatusConfigItem {
+  label: string;
+  icon: LucideIcon;
+  className: string;
+  iconClassName: string;
+}
+
+const STATUS_CONFIG: Record<SaveStatus, StatusConfigItem> = {
   idle: {
     label: "Ready",
     icon: CircleDot,
@@ -43,6 +52,12 @@ const STATUS_CONFIG = {
     className: "text-danger border-danger/30 bg-danger/10",
     iconClassName: "text-danger",
   },
+  loading: {
+    label: "Syncing...",
+    icon: Loader2,
+    className: "text-foreground-muted border-primary/20 bg-primary/5",
+    iconClassName: "text-primary animate-spin",
+  },
   error: {
     label: "Save failed — Retry",
     icon: AlertTriangle,
@@ -50,11 +65,11 @@ const STATUS_CONFIG = {
       "text-rose-600 dark:text-rose-400 border-rose-500/30 bg-rose-500/10 cursor-pointer hover:bg-rose-500/20",
     iconClassName: "text-rose-500",
   },
-} as const;
+};
 
 export function SaveStatusBadge() {
   const saveStatus = useUIStore((state) => state.saveStatus);
-  const config = STATUS_CONFIG[saveStatus];
+  const config = STATUS_CONFIG[saveStatus] || STATUS_CONFIG.idle;
   const Icon = config.icon;
 
   const handleClick = () => {

@@ -1,7 +1,35 @@
 import { format, subDays } from "date-fns";
 import type { Habit, HabitCompletion, Routine } from "../types";
 
+/**
+ * Returns clean initial habits for a newly provisioned account.
+ * New accounts start with zero sample habits or fake streaks.
+ */
 export function getInitialDefaultHabits(): Habit[] {
+  return [];
+}
+
+/**
+ * Returns clean initial completions for a newly provisioned account.
+ * New accounts start with zero preloaded completions or fake history.
+ */
+export function getInitialDefaultCompletions(): HabitCompletion[] {
+  return [];
+}
+
+/**
+ * Returns clean initial routines for a newly provisioned account.
+ * New accounts start with zero sample routines.
+ */
+export function getInitialDefaultRoutines(): Routine[] {
+  return [];
+}
+
+/**
+ * Test fixture generators used exclusively in automated test suites
+ * to test habit toggling, routine navigation, and consistency metrics.
+ */
+export function getSampleTestHabits(): Habit[] {
   const today = new Date();
   const startDate = format(subDays(today, 14), "yyyy-MM-dd");
 
@@ -11,7 +39,7 @@ export function getInitialDefaultHabits(): Habit[] {
       name: "Drink 8 Glasses of Water",
       description: "Stay hydrated throughout the workday for sustained mental clarity.",
       emoji: "💧",
-      color: "#0ea5e9", // Sky blue
+      color: "#0ea5e9",
       category: "Health & Wellness",
       type: "quantity",
       target: 8,
@@ -32,7 +60,7 @@ export function getInitialDefaultHabits(): Habit[] {
       name: "Read 20 Minutes",
       description: "Deep reading from non-fiction books or technical literature.",
       emoji: "📖",
-      color: "#8b5cf6", // Violet
+      color: "#8b5cf6",
       category: "Learning",
       type: "duration",
       target: 20,
@@ -53,7 +81,7 @@ export function getInitialDefaultHabits(): Habit[] {
       name: "Exercise & Movement",
       description: "Strength training, cardio run, or dynamic bodyweight workout.",
       emoji: "🏃",
-      color: "#10b981", // Emerald
+      color: "#10b981",
       category: "Health & Wellness",
       type: "checkbox",
       target: 1,
@@ -61,7 +89,7 @@ export function getInitialDefaultHabits(): Habit[] {
       startDate,
       schedule: {
         frequency: "specific_days",
-        daysOfWeek: [1, 2, 4, 5, 6], // Mon, Tue, Thu, Fri, Sat
+        daysOfWeek: [1, 2, 4, 5, 6],
       },
       preferredTime: "07:30",
       reminderMinutes: 30,
@@ -75,7 +103,7 @@ export function getInitialDefaultHabits(): Habit[] {
       name: "Evening Daily Review",
       description: "Review today's accomplishments and set top 3 priorities for tomorrow.",
       emoji: "✨",
-      color: "#f59e0b", // Amber
+      color: "#f59e0b",
       category: "Productivity",
       type: "checkbox",
       target: 1,
@@ -94,14 +122,12 @@ export function getInitialDefaultHabits(): Habit[] {
   ];
 }
 
-export function getInitialDefaultCompletions(): HabitCompletion[] {
+export function getSampleTestCompletions(): HabitCompletion[] {
   const completions: HabitCompletion[] = [];
   const today = new Date();
 
-  // Seed completions for the past 7 days to give the user active streaks and heatmap
   for (let i = 7; i >= 1; i--) {
     const dStr = format(subDays(today, i), "yyyy-MM-dd");
-    // Water
     completions.push({
       id: `comp-water-${dStr}`,
       habitId: "habit-water",
@@ -111,7 +137,6 @@ export function getInitialDefaultCompletions(): HabitCompletion[] {
       targetValue: 8,
       completedAt: new Date().toISOString(),
     });
-    // Reading
     completions.push({
       id: `comp-reading-${dStr}`,
       habitId: "habit-reading",
@@ -121,7 +146,6 @@ export function getInitialDefaultCompletions(): HabitCompletion[] {
       targetValue: 20,
       completedAt: new Date().toISOString(),
     });
-    // Plan day (weekdays)
     const dayOfWeek = subDays(today, i).getDay();
     if (dayOfWeek >= 1 && dayOfWeek <= 5) {
       completions.push({
@@ -139,14 +163,14 @@ export function getInitialDefaultCompletions(): HabitCompletion[] {
   return completions;
 }
 
-export function getInitialDefaultRoutines(): Routine[] {
+export function getSampleTestRoutines(): Routine[] {
   return [
     {
       id: "routine-morning",
       title: "Morning Focus Kickstart",
       description: "Prime your brain and body for high-output focus before checking messages.",
       emoji: "☀️",
-      color: "#3b82f6", // Blue
+      color: "#3b82f6",
       estimatedMinutes: 25,
       schedule: {
         frequency: "weekdays",
@@ -193,7 +217,7 @@ export function getInitialDefaultRoutines(): Routine[] {
       title: "Evening Wind-Down & Closure",
       description: "Transition smoothly from high-intensity work mode into restful recovery.",
       emoji: "🌙",
-      color: "#6366f1", // Indigo
+      color: "#6366f1",
       estimatedMinutes: 20,
       schedule: {
         frequency: "daily",

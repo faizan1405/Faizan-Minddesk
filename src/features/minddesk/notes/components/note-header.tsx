@@ -10,6 +10,7 @@ import {
   Download,
   X,
   FileText,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -22,6 +23,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { NoteItem, ProjectItem } from "../../types";
 import { COVER_PRESETS, EMOJI_OPTIONS } from "../types";
+import type { SaveStatus } from "@/types/domain";
+import { useDeskData } from "../../store";
 
 interface NoteHeaderProps {
   note: NoteItem;
@@ -33,7 +36,7 @@ interface NoteHeaderProps {
   onDelete: () => void;
   onExportMarkdown: () => void;
   onExportJson: () => void;
-  saveStatus: "saved" | "saving" | "unsaved";
+  saveStatus: SaveStatus;
 }
 
 export function NoteHeader({
@@ -48,6 +51,7 @@ export function NoteHeader({
   onExportJson,
   saveStatus,
 }: NoteHeaderProps) {
+  const { persistImmediately } = useDeskData();
   const [coverPickerOpen, setCoverPickerOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
@@ -109,9 +113,39 @@ export function NoteHeader({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[11px] text-muted-foreground/70">
-            {saveStatus === "saving" ? "Saving…" : "Saved in this browser"} · {note.updated}
-          </span>
+          {saveStatus === "error" || saveStatus === "offline" ? (
+            <button
+              type="button"
+              onClick={() => {
+                void persistImmediately();
+              }}
+              className="text-[11px] text-destructive hover:underline flex items-center gap-1 cursor-pointer font-medium"
+              title="Click to retry saving to MySQL"
+            >
+              <AlertCircle className="size-3" />
+              {saveStatus === "error" ? "Save failed — Click to retry" : "Offline — Pending sync"}
+            </button>
+          ) : (
+            <span className="text-[11px] text-muted-foreground/70 flex items-center gap-1.5">
+              {saveStatus === "saving" ? (
+                <>
+                  <span className="inline-block size-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  Saving…
+                </>
+              ) : saveStatus === "loading" ? (
+                <>
+                  <span className="inline-block size-1.5 rounded-full bg-sky-500 animate-pulse" />
+                  Loading…
+                </>
+              ) : (
+                <>
+                  <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
+                  Synced
+                </>
+              )}
+              <span className="text-muted-foreground/50">·</span> {note.updated}
+            </span>
+          )}
 
           <Button
             variant="ghost"

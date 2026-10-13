@@ -200,7 +200,7 @@ export async function getWorkspaceDeskData(
       content: meta.html !== undefined ? meta.html : n.contentText || "",
       icon: meta.icon || "📝",
       updated: n.updatedAt.toISOString(),
-      projectId: n.projectId || "personal",
+      projectId: n.projectId || undefined,
       starred: n.isPinned,
       parentId: n.parentNoteId,
       coverImage: meta.coverImage ?? null,
@@ -508,8 +508,12 @@ export async function saveWorkspaceDeskData(
 
     // 4. Save Notes if provided
     if (data.notes && Array.isArray(data.notes)) {
+      const validNoteIds = new Set<string>();
+
+      // Pass 1: Upsert all notes ensuring IDs exist in MySQL
       for (const note of data.notes) {
         if (!note?.id) continue;
+        validNoteIds.add(note.id);
 
         let assignedProjectId: string | null = note.projectId || null;
         if (assignedProjectId && !existingProjectIds.has(assignedProjectId)) {
@@ -551,6 +555,28 @@ export async function saveWorkspaceDeskData(
             isPinned: Boolean(note.starred),
             lastSavedAt: new Date(),
             position: 1000.0,
+          },
+        });
+      }
+
+      // Pass 2: Link parentNoteId hierarchy safely once all note IDs exist
+      for (const note of data.notes) {
+        if (!note?.id) continue;
+        const parentId =
+          note.parentId && validNoteIds.has(note.parentId) && note.parentId !== note.id
+            ? note.parentId
+            : null;
+
+        await tx.note.update({
+          where: {
+            id_userId_workspaceId: {
+              id: note.id,
+              userId: actor.id,
+              workspaceId,
+            },
+          },
+          data: {
+            parentNoteId: parentId,
           },
         });
       }
@@ -817,33 +843,45 @@ export async function previewLocalDataImport(
     (prefs.routines?.routines || []).map((r) => r.id)
   );
 
-  const tasksToImport = (localData.tasks || []).filter(
-    (t) => !existingTaskIds.has(t.id)
-  ).length;
+  // Filter out known prototype demo item IDs so they are never flagged for cloud import
+  const DEMO_DATA_IDS = new Set([
+    "task-1", "task-2", "task-3", "task-4", "task-5", "task-6", "task-7", "task-8", "task-9", "task-10",
+    "note-1", "note-2", "note-3", "note-roadmap", "note-architecture",
+    "northstar", "fieldnotes", "launch", "personal",
+    "map-1",
+    "evt-standup-recurring", "evt-lunch", "evt-sprint-review", "evt-quarterly-planning", "evt-gym", "evt-tech-webinar",
+    "habit-water", "habit-reading", "habit-workout", "habit-plan-day",
+    "routine-morning", "routine-evening",
+    "list-skills", "list-projects", "list-routine", "list-goals",
+  ]);
 
-  const notesToImport = (localData.notes || []).filter(
-    (n) => !existingNoteIds.has(n.id)
-  ).length;
+  const tasksToImport = (localData.tasks || [])
+    .filter((t) => !DEMO_DATA_IDS.has(t.id))
+    .filter((t) => !existingTaskIds.has(t.id)).length;
 
-  const mapsToImport = (localData.maps || []).filter(
-    (m) => !existingMapIds.has(m.id)
-  ).length;
+  const notesToImport = (localData.notes || [])
+    .filter((n) => !DEMO_DATA_IDS.has(n.id))
+    .filter((n) => !existingNoteIds.has(n.id)).length;
 
-  const projectsToImport = (localData.projects || []).filter(
-    (p) => !existingProjectIds.has(p.id)
-  ).length;
+  const mapsToImport = (localData.maps || [])
+    .filter((m) => !DEMO_DATA_IDS.has(m.id))
+    .filter((m) => !existingMapIds.has(m.id)).length;
 
-  const eventsToImport = (localData.events || []).filter(
-    (e) => !existingEventIds.has(e.id)
-  ).length;
+  const projectsToImport = (localData.projects || [])
+    .filter((p) => !DEMO_DATA_IDS.has(p.id))
+    .filter((p) => !existingProjectIds.has(p.id)).length;
 
-  const habitsToImport = (localData.habits || []).filter(
-    (h) => !existingHabitIds.has(h.id)
-  ).length;
+  const eventsToImport = (localData.events || [])
+    .filter((e) => !DEMO_DATA_IDS.has(e.id))
+    .filter((e) => !existingEventIds.has(e.id)).length;
 
-  const routinesToImport = (localData.routines || []).filter(
-    (r) => !existingRoutineIds.has(r.id)
-  ).length;
+  const habitsToImport = (localData.habits || [])
+    .filter((h) => !DEMO_DATA_IDS.has(h.id))
+    .filter((h) => !existingHabitIds.has(h.id)).length;
+
+  const routinesToImport = (localData.routines || [])
+    .filter((r) => !DEMO_DATA_IDS.has(r.id))
+    .filter((r) => !existingRoutineIds.has(r.id)).length;
 
   const total =
     tasksToImport +

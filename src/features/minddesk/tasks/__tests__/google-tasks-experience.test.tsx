@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MindDeskProvider } from "@/features/minddesk/store";
 import { TasksView } from "@/features/minddesk/tasks-view";
+import { initialDeskData } from "@/features/minddesk/seed";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/tasks",
@@ -12,6 +13,39 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+const sampleTestDeskData = {
+  ...initialDeskData,
+  taskLists: [
+    { id: "list-my-tasks", title: "My Tasks", order: 0, isDefault: true },
+    { id: "list-skills", title: "Sharpen My Skills", order: 1 },
+    { id: "list-projects", title: "Website Projects", order: 2 },
+  ],
+  tasks: [
+    {
+      id: "task-test-1",
+      listId: "list-my-tasks",
+      title: "Morning focus alignment",
+      note: "Review customer onboarding feedback",
+      due: "Today",
+      priority: "medium" as const,
+      complete: false,
+      starred: false,
+      subtasks: [],
+    },
+    {
+      id: "task-test-2",
+      listId: "list-my-tasks",
+      title: "Review the launch narrative",
+      note: "",
+      due: "Today",
+      priority: "high" as const,
+      complete: false,
+      starred: false,
+      subtasks: [],
+    },
+  ],
+};
+
 describe("Google Tasks Experience (Phase 3)", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -19,30 +53,23 @@ describe("Google Tasks Experience (Phase 3)", () => {
 
   it("renders multiple task lists side by side horizontally in All view", () => {
     render(
-      <MindDeskProvider>
+      <MindDeskProvider initialData={sampleTestDeskData}>
         <TasksView filter="All" />
       </MindDeskProvider>
     );
 
-    // Verify all 5 default task lists appear as columns
     const colMyTasks = screen.getByTestId("task-column-list-my-tasks");
     const colSkills = screen.getByTestId("task-column-list-skills");
     const colProjects = screen.getByTestId("task-column-list-projects");
-    const colRoutine = screen.getByTestId("task-column-list-routine");
-    const colGoals = screen.getByTestId("task-column-list-goals");
 
     expect(colMyTasks).toBeInTheDocument();
     expect(colSkills).toBeInTheDocument();
     expect(colProjects).toBeInTheDocument();
-    expect(colRoutine).toBeInTheDocument();
-    expect(colGoals).toBeInTheDocument();
 
     // Verify column headers
     expect(within(colMyTasks).getByText("My Tasks")).toBeInTheDocument();
     expect(within(colSkills).getByText("Sharpen My Skills")).toBeInTheDocument();
     expect(within(colProjects).getByText("Website Projects")).toBeInTheDocument();
-    expect(within(colRoutine).getByText("Daily Routine")).toBeInTheDocument();
-    expect(within(colGoals).getByText("Business Goals")).toBeInTheDocument();
   });
 
   it("creates a new task list via Create List dialog", () => {
@@ -86,7 +113,7 @@ describe("Google Tasks Experience (Phase 3)", () => {
 
   it("toggles task completion and supports Undo restore", () => {
     render(
-      <MindDeskProvider>
+      <MindDeskProvider initialData={sampleTestDeskData}>
         <TasksView filter="All" />
       </MindDeskProvider>
     );
@@ -124,7 +151,7 @@ describe("Google Tasks Experience (Phase 3)", () => {
 
   it("toggles star on a task and synchronizes with Starred view", () => {
     render(
-      <MindDeskProvider>
+      <MindDeskProvider initialData={sampleTestDeskData}>
         <TasksView filter="All" />
       </MindDeskProvider>
     );
@@ -148,13 +175,13 @@ describe("Google Tasks Experience (Phase 3)", () => {
 
   it("opens task detail modal, edits note and priority, and duplicates task", () => {
     render(
-      <MindDeskProvider>
+      <MindDeskProvider initialData={sampleTestDeskData}>
         <TasksView filter="All" />
       </MindDeskProvider>
     );
 
     // Click task title to open detail modal
-    const taskTitle = screen.getByText("Review customer onboarding feedback");
+    const taskTitle = screen.getByText("Morning focus alignment");
     fireEvent.click(taskTitle);
 
     // Detail modal opens
@@ -177,12 +204,12 @@ describe("Google Tasks Experience (Phase 3)", () => {
 
   it("manages subtasks: adds subtask, completes it, and promotes to main task", () => {
     render(
-      <MindDeskProvider>
+      <MindDeskProvider initialData={sampleTestDeskData}>
         <TasksView filter="All" />
       </MindDeskProvider>
     );
 
-    // Open task-1 ("Review the launch narrative") detail modal
+    // Open task-test-2 ("Review the launch narrative") detail modal
     const taskTitle = screen.getByText("Review the launch narrative");
     fireEvent.click(taskTitle);
 

@@ -26,7 +26,7 @@ interface NotesViewProps {
 }
 
 export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProps = {}) {
-  const { data, update, selectedItem, setSelectedItem } = useDeskData();
+  const { data, update, selectedItem, setSelectedItem, registerDeletedId, persistImmediately } = useDeskData();
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<"updated" | "alpha">("updated");
   const [viewLayout, setViewLayout] = useState<"grid" | "list">("grid");
@@ -58,7 +58,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
       content: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Start writing…"}]}]}',
       icon: "✎",
       updated: "Just now",
-      projectId: data.projects[0]?.id ?? "personal",
+      projectId: data.projects[0]?.id || "",
       starred: false,
       ...(parentId ? { parentId } : {}),
     };
@@ -81,6 +81,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
 
   // Delete note
   const deleteNote = (noteId: string) => {
+    registerDeletedId("note", noteId);
     update((current) => ({
       ...current,
       notes: current.notes
@@ -154,8 +155,12 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
           </div>
 
           <NoteEditor
+            key={activeNote.id}
             note={activeNote}
-            onBack={() => setOpenNoteId(null)}
+            onBack={() => {
+              void persistImmediately();
+              setOpenNoteId(null);
+            }}
             onUpdate={(changes) =>
               update((current) => ({
                 ...current,
@@ -164,7 +169,10 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
                 ),
               }))
             }
-            onNavigateToNote={(id) => setOpenNoteId(id)}
+            onNavigateToNote={(id) => {
+              void persistImmediately();
+              setOpenNoteId(id);
+            }}
             onDuplicateNote={() => duplicateNote(activeNote)}
             onDeleteNote={() => deleteNote(activeNote.id)}
           />
@@ -327,12 +335,12 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
           <div className="grid size-12 place-items-center rounded-2xl bg-muted text-muted-foreground mb-3">
             <FileText className="size-6" />
           </div>
-          <h3 className="text-base font-semibold">No notes found</h3>
+          <h3 className="text-base font-semibold">{query ? "No notes found" : "No notes yet"}</h3>
           <p className="mt-1 text-sm text-muted-foreground max-w-sm">
             {query ? "Try adjusting your search terms." : "Capture thoughts, ideas, or meeting notes."}
           </p>
           <Button onClick={() => createNote()} className="mt-4 gap-1.5">
-            <Plus className="size-4" /> Write a note
+            <Plus className="size-4" /> {query ? "Write a note" : "Create your first note"}
           </Button>
         </div>
       )}

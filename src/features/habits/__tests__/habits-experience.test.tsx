@@ -15,11 +15,30 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-function renderHabitsWorkspace() {
+import {
+  getSampleTestHabits,
+  getSampleTestCompletions,
+  getSampleTestRoutines,
+} from "@/features/habits/services/habit-defaults";
+import type { Habit, HabitCompletion, Routine } from "@/features/habits/types";
+
+function renderHabitsWorkspace(options?: {
+  initialHabits?: Habit[];
+  initialCompletions?: HabitCompletion[];
+  initialRoutines?: Routine[];
+}) {
+  const habits = options?.initialHabits ?? getSampleTestHabits();
+  const completions = options?.initialCompletions ?? getSampleTestCompletions();
+  const routines = options?.initialRoutines ?? getSampleTestRoutines();
+
   return render(
     <MindDeskProvider>
       <CalendarProvider>
-        <HabitsProvider>
+        <HabitsProvider
+          initialHabits={habits}
+          initialCompletions={completions}
+          initialRoutines={routines}
+        >
           <NotificationProvider>
             <HabitsWorkspace />
           </NotificationProvider>
