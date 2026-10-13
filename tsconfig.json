@@ -37,6 +37,10 @@
   ],
   "exclude": [
     "node_modules",
-    "reference-frontend"
+    "reference-frontend",
+    "src/test",
+    "src/**/__tests__",
+    "**/*.test.ts",
+    "**/*.test.tsx"
   ]
 }
