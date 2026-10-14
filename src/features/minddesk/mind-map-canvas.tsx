@@ -100,9 +100,6 @@ export function MindMapCanvas({
   const [linkDialogNodeId, setLinkDialogNodeId] = useState<string | null>(null);
   const [deleteConfirmNodeId, setDeleteConfirmNodeId] = useState<string | null>(null);
 
-  // Undo / Redo history stacks
-  const [history, setHistory] = useState<HistoryState[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
   const isHistoryActionRef = useRef(false);
 
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<MindFlowNode, Edge> | null>(null);
@@ -144,6 +141,12 @@ export function MindMapCanvas({
       style: { stroke: themeConfig.edgeStroke, strokeWidth: 2 },
     }))
   );
+
+  // Undo / Redo history stacks (initialized with initial graph snapshot)
+  const [history, setHistory] = useState<HistoryState[]>(() => [
+    { nodes, edges },
+  ]);
+  const [historyIndex, setHistoryIndex] = useState(0);
 
   // Sync with prop updates
   useEffect(() => {

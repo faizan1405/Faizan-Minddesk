@@ -136,6 +136,7 @@ export function MindMapToolbar({
           type="button"
           variant="ghost"
           size="sm"
+          data-testid="layout-menu-trigger"
           className="h-8 gap-1.5 text-xs px-2 rounded-lg"
           onClick={() => setActiveMenu(activeMenu === "layout" ? null : "layout")}
         >
@@ -189,6 +190,7 @@ export function MindMapToolbar({
           type="button"
           variant="ghost"
           size="sm"
+          data-testid="theme-menu-trigger"
           className="h-8 gap-1.5 text-xs px-2 rounded-lg"
           onClick={() => setActiveMenu(activeMenu === "theme" ? null : "theme")}
         >
