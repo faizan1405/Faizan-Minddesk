@@ -64,10 +64,32 @@ export interface NoteItem {
   coverImage?: string | null;
 }
 
+export type MindMapTheme = "calm" | "paper" | "midnight";
+export type MindMapLayout =
+  | "balanced"
+  | "horizontal"
+  | "vertical"
+  | "radial"
+  | "freeform"
+  | "tree";
+
 export interface MapNodeItem {
   id: string;
   position: { x: number; y: number };
-  data: { label: string; color: string };
+  data: {
+    label: string;
+    color: string;
+    note?: string;
+    shape?: "rounded" | "pill" | "rectangle" | "diamond" | "circle";
+    icon?: string;
+    collapsed?: boolean;
+    linkedTaskId?: string;
+    linkedNoteId?: string;
+    fontSize?: "sm" | "base" | "lg" | "xl";
+    tags?: string[];
+    isRoot?: boolean;
+    [key: string]: unknown;
+  };
   type?: string;
 }
 
@@ -76,6 +98,9 @@ export interface MapEdgeItem {
   source: string;
   target: string;
   animated?: boolean;
+  label?: string;
+  type?: string;
+  style?: Record<string, unknown>;
 }
 
 export interface MindMapItem {
@@ -83,8 +108,8 @@ export interface MindMapItem {
   title: string;
   updated: string;
   starred: boolean;
-  theme?: "calm" | "paper" | "midnight";
-  layout?: "freeform" | "tree" | "radial";
+  theme?: MindMapTheme;
+  layout?: MindMapLayout;
   nodes: MapNodeItem[];
   edges: MapEdgeItem[];
 }

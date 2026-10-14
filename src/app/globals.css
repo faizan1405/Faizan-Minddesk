@@ -224,13 +224,105 @@
 .minddesk-note-editor .ProseMirror table .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: 0; width: 4px; z-index: 20; background-color: var(--primary); pointer-events: none; }
 /* Horizontal Rule */
 .minddesk-note-editor .ProseMirror hr { border: none; border-top: 1px solid var(--border); margin: 1.75rem 0; }
-.map-canvas { position: relative; height: min(68vh, 650px); min-height: 380px; overflow: hidden; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--background); }
-.map-canvas[data-theme="paper"] { --background: #f6f0e5; --card: #fffaf1; --foreground: #494235; --border: #dfd4c1; --primary: #8b7555; }
-.map-canvas[data-theme="midnight"] { --background: #20212a; --card: #292a35; --foreground: #f0edf6; --border: #414151; --primary: #b6a8ff; }
-.map-toolbar { position: absolute; z-index: 5; top: 0.75rem; left: 50%; display: flex; max-width: calc(100% - 1.5rem); transform: translateX(-50%); align-items: center; gap: 0.25rem; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); padding: 0.25rem; box-shadow: 0 5px 20px color-mix(in oklab, var(--foreground) 8%, transparent); }
-.react-flow__background { background-color: var(--background); }
-.react-flow__edge-path { stroke: color-mix(in oklab, var(--primary) 42%, var(--border)); }
-.react-flow__minimap { background: var(--card); border: 1px solid var(--border); border-radius: 0.5rem; }
+/* ==========================================================================
+   MindDesk Professional Mind Map Styling & Themes (Calm, Paper, Midnight)
+   ========================================================================== */
+
+[data-theme="calm"] {
+  --map-canvas-bg: #f8fafc;
+  --map-grid: #e2e8f0;
+  --map-text: #0f172a;
+  --map-node-bg: #ffffff;
+  --map-node-border: #cbd5e1;
+  --map-edge: #94a3b8;
+  --map-edge-active: #6366f1;
+}
+
+[data-theme="paper"] {
+  --map-canvas-bg: #fbf8f2;
+  --map-grid: #e7decb;
+  --map-text: #1c1917;
+  --map-node-bg: #fffdf9;
+  --map-node-border: #d6c7b2;
+  --map-edge: #a89a85;
+  --map-edge-active: #9a3412;
+  --card: #fffdf9;
+  --foreground: #1c1917;
+  --border: #d6c7b2;
+  --muted-foreground: #78716c;
+}
+
+[data-theme="midnight"] {
+  --map-canvas-bg: #0f172a;
+  --map-grid: #1e293b;
+  --map-text: #f8fafc;
+  --map-node-bg: #1e293b;
+  --map-node-border: #334155;
+  --map-edge: #475569;
+  --map-edge-active: #818cf8;
+  --card: #1e293b;
+  --foreground: #f8fafc;
+  --border: #334155;
+  --muted-foreground: #94a3b8;
+}
+
+/* React Flow Canvas Theme Adaptations */
+[data-theme="paper"] .react-flow__pane {
+  background-color: #fbf8f2 !important;
+}
+[data-theme="midnight"] .react-flow__pane {
+  background-color: #0f172a !important;
+}
+[data-theme="calm"] .react-flow__pane {
+  background-color: #f8fafc !important;
+}
+
+/* React Flow Controls & MiniMap Theme Adaptations */
+[data-theme="paper"] .react-flow__controls button {
+  background-color: #fffdf9;
+  border-color: #d6c7b2;
+  color: #1c1917;
+  fill: #1c1917;
+}
+[data-theme="paper"] .react-flow__controls button:hover {
+  background-color: #f5ede0;
+}
+[data-theme="midnight"] .react-flow__controls button {
+  background-color: #1e293b;
+  border-color: #334155;
+  color: #f8fafc;
+  fill: #f8fafc;
+}
+[data-theme="midnight"] .react-flow__controls button:hover {
+  background-color: #334155;
+}
+
+[data-theme="paper"] .react-flow__edge-path {
+  stroke: #a89a85;
+  stroke-width: 2.2px;
+}
+[data-theme="paper"] .react-flow__edge.selected .react-flow__edge-path {
+  stroke: #9a3412;
+  stroke-width: 3px;
+}
+
+[data-theme="midnight"] .react-flow__edge-path {
+  stroke: #475569;
+  stroke-width: 2.2px;
+}
+[data-theme="midnight"] .react-flow__edge.selected .react-flow__edge-path {
+  stroke: #818cf8;
+  stroke-width: 3px;
+}
+
+[data-theme="calm"] .react-flow__edge-path {
+  stroke: #94a3b8;
+  stroke-width: 2.2px;
+}
+[data-theme="calm"] .react-flow__edge.selected .react-flow__edge-path {
+  stroke: #6366f1;
+  stroke-width: 3px;
+}
 
 dialog:modal {
   overscroll-behavior: contain;

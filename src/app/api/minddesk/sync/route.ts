@@ -40,6 +40,9 @@ function handleSyncError(err: unknown, operation: "sync" | "save") {
     } else if (err.code === "P1001" || err.code === "P1000") {
       message = "Database server is unreachable or access was denied.";
     }
+  } else if (err instanceof Prisma.PrismaClientValidationError) {
+    code = "VALIDATION_ERROR";
+    message = "Workspace payload validation failed.";
   } else if (err instanceof Prisma.PrismaClientInitializationError) {
     code = "P1000";
     message = "Database initialization error.";
@@ -52,13 +55,15 @@ function handleSyncError(err: unknown, operation: "sync" | "save") {
     stack: err instanceof Error ? err.stack : undefined,
   });
 
+  const statusCode = code === "VALIDATION_ERROR" ? 400 : 500;
+
   return NextResponse.json(
     {
       error: message,
       code,
       diagnosticId,
     },
-    { status: 500 }
+    { status: statusCode }
   );
 }
 

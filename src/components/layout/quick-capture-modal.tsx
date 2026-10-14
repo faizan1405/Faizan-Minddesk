@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDeskData } from "@/features/minddesk/store";
 import type { TaskItem } from "@/features/minddesk/types";
+import { createDefaultMindMap } from "@/features/minddesk/utils/mind-map-utils";
 import { useUIStore } from "@/stores/ui-store";
 
 type CaptureType = "task" | "note" | "map";
@@ -71,35 +72,12 @@ export function QuickCaptureModal() {
       handleClose();
       router.push("/notes");
     } else {
-      const id = crypto.randomUUID();
+      const newMap = createDefaultMindMap(title);
       update((current) => ({
         ...current,
-        maps: [
-          {
-            id,
-            title,
-            updated: "Just now",
-            starred: false,
-            nodes: [
-              {
-                id: "root",
-                position: { x: 250, y: 180 },
-                data: { label: title, color: "violet" },
-                type: "mind",
-              },
-              {
-                id: "idea",
-                position: { x: 560, y: 180 },
-                data: { label: "Add an idea", color: "mint" },
-                type: "mind",
-              },
-            ],
-            edges: [{ id: "root-idea", source: "root", target: "idea" }],
-          },
-          ...current.maps,
-        ],
+        maps: [newMap, ...current.maps],
       }));
-      setSelectedItem(id);
+      setSelectedItem(newMap.id);
       handleClose();
       router.push("/mind-maps");
     }

@@ -37,6 +37,7 @@ export interface ProfilePreferencesJson {
     projects?: string[];
     tasks?: string[];
     notes?: string[];
+    maps?: string[];
     habits?: string[];
     routines?: string[];
     events?: string[];

@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { useDeskData } from "./store";
 import { MindMapCanvas } from "./mind-map-canvas";
-import type { MindMapItem, ProjectItem } from "./types";
+import type { ProjectItem } from "./types";
+import { createDefaultMindMap } from "./utils/mind-map-utils";
 import { NotesView } from "./notes/notes-view";
 
 export { NotesView };
@@ -426,20 +427,9 @@ export function MapsView({ favoriteOnly = false, initialMapId }: { favoriteOnly?
 
   const activeMap = data.maps.find((item) => item.id === mapId);
   const createMap = () => {
-    const id = crypto.randomUUID();
-    const map: MindMapItem = {
-      id,
-      title: "Untitled mind map",
-      updated: "Just now",
-      starred: false,
-      nodes: [
-        { id: "root", position: { x: 250, y: 150 }, data: { label: "A new thought", color: "violet" }, type: "mind" },
-        { id: "idea", position: { x: 570, y: 150 }, data: { label: "Add an idea", color: "blue" }, type: "mind" },
-      ],
-      edges: [{ id: "root-idea", source: "root", target: "idea" }],
-    };
-    update((current) => ({ ...current, maps: [map, ...current.maps] }));
-    setMapId(id);
+    const newMap = createDefaultMindMap("Untitled mind map");
+    update((current) => ({ ...current, maps: [newMap, ...current.maps] }));
+    setMapId(newMap.id);
   };
 
   if (activeMap) {
@@ -501,7 +491,9 @@ export function MapsView({ favoriteOnly = false, initialMapId }: { favoriteOnly?
           nodes={activeMap.nodes}
           edges={activeMap.edges}
           theme={activeMap.theme ?? "calm"}
-          layout={activeMap.layout ?? "freeform"}
+          layout={activeMap.layout ?? "balanced"}
+          availableTasks={data.tasks}
+          availableNotes={data.notes}
           onThemeChange={(theme) =>
             update((current) => ({
               ...current,
