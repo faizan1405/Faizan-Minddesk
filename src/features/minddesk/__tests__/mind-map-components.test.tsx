@@ -1,13 +1,17 @@
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { ReactFlow, ReactFlowProvider } from "@xyflow/react";
+import { MindMapCanvas } from "../mind-map-canvas";
 import { MindMapToolbar } from "../mind-map/mind-map-toolbar";
+import { MindMapNode } from "../mind-map/mind-map-node";
 import {
   NodeDeleteDialog,
   NodeLinkDialog,
   NodeNoteDialog,
 } from "../mind-map/mind-map-dialogs";
 import type { TaskItem, NoteItem } from "../types";
+
 
 describe("MindMapToolbar Component", () => {
   it("renders layout selector, theme selector, and action buttons", () => {
@@ -202,3 +206,157 @@ describe("MindMapDialogs Components", () => {
     expect(onDeleteBranch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("MindMapNode Component (Xmind / MindMeister UX)", () => {
+  it("renders topic label and shows contextual NodeToolbar when selected", () => {
+    const onAddChild = vi.fn();
+    const onStartConnecting = vi.fn();
+
+    const nodeTypes = { mind: MindMapNode };
+
+    render(
+      <ReactFlow
+        nodes={[
+          {
+            id: "node-1",
+            type: "mind",
+            position: { x: 0, y: 0 },
+            selected: true,
+            data: {
+              label: "Product Roadmap",
+              color: "violet",
+              shape: "rounded",
+              isSelected: true,
+              onAddChild,
+              onStartConnecting,
+            },
+          },
+        ]}
+        nodeTypes={nodeTypes}
+      />
+    );
+
+
+    expect(screen.getByText("Product Roadmap")).toBeInTheDocument();
+    // Contextual toolbar should be visible
+    expect(screen.getByTestId("node-context-toolbar")).toBeInTheDocument();
+
+    // Clicking Add Subtopic
+    const addChildBtn = screen.getByTitle(/Add Subtopic/i);
+    fireEvent.click(addChildBtn);
+    expect(onAddChild).toHaveBeenCalledWith("node-1");
+
+    // Clicking Connect
+    const connectBtn = screen.getByTitle(/Connect \/ Relationship/i);
+    fireEvent.click(connectBtn);
+    expect(onStartConnecting).toHaveBeenCalledWith("node-1");
+  });
+
+  it("enters inline editing mode on double-click and commits change on Enter", () => {
+    const onLabelChange = vi.fn();
+
+    render(
+      <ReactFlowProvider>
+        <MindMapNode
+          id="node-1"
+          type="mind"
+          selected={true}
+          zIndex={1}
+          isConnectable={true}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+          dragging={false}
+          data={{
+            label: "Old Topic Name",
+            color: "blue",
+            shape: "rounded",
+            onLabelChange,
+          }}
+        />
+      </ReactFlowProvider>
+    );
+
+    const topicCard = screen.getByTestId("mindmap-node-node-1");
+    fireEvent.doubleClick(topicCard);
+
+    const input = screen.getByLabelText(/Edit mind map topic/i) as HTMLInputElement;
+    expect(input).toBeInTheDocument();
+    expect(input.value).toBe("Old Topic Name");
+
+    fireEvent.change(input, { target: { value: "New Topic Name" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onLabelChange).toHaveBeenCalledWith("node-1", "New Topic Name");
+  });
+});
+
+describe("MindMapCanvas Integration & Interactions", () => {
+  it("renders canvas and clicking Add Topic creates and selects new topic under root", () => {
+    const onSave = vi.fn();
+    const initialNodes = [
+      {
+        id: "root-1",
+        type: "mind" as const,
+        position: { x: 0, y: 0 },
+        data: { label: "Central Goal", isRoot: true },
+      },
+    ];
+
+    render(
+      <MindMapCanvas
+        nodes={initialNodes}
+        edges={[]}
+        onSave={onSave}
+        theme="calm"
+        layout="balanced"
+      />
+    );
+
+    expect(screen.getByText("Central Goal")).toBeInTheDocument();
+
+    // Click Add Topic button on main toolbar
+    const addTopicBtn = screen.getByRole("button", { name: /Add Topic/i });
+    fireEvent.click(addTopicBtn);
+
+    // Save should be triggered with 2 nodes and 1 edge
+    expect(onSave).toHaveBeenCalled();
+    const lastCall = onSave.mock.calls[onSave.mock.calls.length - 1];
+    const savedNodes = lastCall[0];
+    const savedEdges = lastCall[1];
+
+    expect(savedNodes).toHaveLength(2);
+    expect(savedEdges).toHaveLength(1);
+    expect(savedEdges[0].source).toBe("root-1");
+  });
+
+  it("triggers keyboard shortcuts Tab (Add Subtopic) on canvas", () => {
+    const onSave = vi.fn();
+    const initialNodes = [
+      {
+        id: "root-1",
+        type: "mind" as const,
+        position: { x: 0, y: 0 },
+        data: { label: "Central Goal", isRoot: true },
+      },
+    ];
+
+    render(
+      <MindMapCanvas
+        nodes={initialNodes}
+        edges={[]}
+        onSave={onSave}
+        theme="paper"
+        layout="horizontal"
+      />
+    );
+
+    // Press Tab
+    fireEvent.keyDown(window, { key: "Tab" });
+
+    expect(onSave).toHaveBeenCalled();
+    const lastCall = onSave.mock.calls[onSave.mock.calls.length - 1];
+    expect(lastCall[0]).toHaveLength(2);
+  });
+});
+
+

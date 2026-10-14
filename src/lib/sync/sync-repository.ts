@@ -116,43 +116,9 @@ export function toSemanticEdgeType(rawType: unknown): MindMapEdgeType {
   return "smoothstep";
 }
 
-export function sanitizeMapIdentifiers(map: MindMapItem): MindMapItem {
-  if (!map?.nodes || !Array.isArray(map.nodes)) return map;
+import { sanitizeMapIdentifiers } from "@/features/minddesk/utils/mind-map-utils";
+export { sanitizeMapIdentifiers };
 
-  const hasLegacyIds =
-    map.nodes.some((n) => n.id === "root" || n.id === "idea") ||
-    map.edges?.some((e) => e.id === "root-idea");
-
-  if (!hasLegacyIds) return map;
-
-  const idMap = new Map<string, string>();
-  const sanitizedNodes = map.nodes.map((node) => {
-    if (node.id === "root" || node.id === "idea") {
-      const newId = `${map.id}_${node.id}`;
-      idMap.set(node.id, newId);
-      return { ...node, id: newId };
-    }
-    return node;
-  });
-
-  const sanitizedEdges = (map.edges || []).map((edge) => {
-    const newSource = idMap.get(edge.source) || edge.source;
-    const newTarget = idMap.get(edge.target) || edge.target;
-    const newId = edge.id === "root-idea" ? `${map.id}_root-idea` : edge.id;
-    return {
-      ...edge,
-      id: newId,
-      source: newSource,
-      target: newTarget,
-    };
-  });
-
-  return {
-    ...map,
-    nodes: sanitizedNodes,
-    edges: sanitizedEdges,
-  };
-}
 
 
 /**

@@ -5,14 +5,20 @@ import {
   saveWorkspaceDeskData,
   getWorkspaceDeskData,
 } from "../src/lib/sync/sync-repository";
+import {
+  generateMapId,
+  generateNodeId,
+  generateEdgeId,
+  createDefaultMindMap,
+} from "../src/features/minddesk/utils/mind-map-utils";
 
 async function main() {
   const prisma = new PrismaClient({
     datasources: { db: { url: process.env.STAGING_DATABASE_URL } },
   });
 
-  const testUserId = `mindmap-usr-${Date.now()}`;
-  const testWsId = `mindmap-ws-${Date.now()}`;
+  const testUserId = generateMapId();
+  const testWsId = generateMapId();
 
   try {
     console.log("------------------------------------------------------------");
@@ -57,12 +63,13 @@ async function main() {
 
     // STEP 1: Create Map 1 with root, child1, child2
     console.log("\nStep 1: Creating Map 1 with 3 nodes and 2 edges...");
-    const map1Id = `map_1_${Date.now()}`;
-    const nodeRoot = `node_root_${Date.now()}`;
-    const nodeChild1 = `node_c1_${Date.now()}`;
-    const nodeChild2 = `node_c2_${Date.now()}`;
-    const edge1 = `edge_1_${Date.now()}`;
-    const edge2 = `edge_2_${Date.now()}`;
+    const map1Id = generateMapId();
+    const nodeRoot = generateNodeId();
+    const nodeChild1 = generateNodeId();
+    const nodeChild2 = generateNodeId();
+    const edge1 = generateEdgeId();
+    const edge2 = generateEdgeId();
+
 
     await saveWorkspaceDeskData(prisma, actor, testWsId, {
       maps: [
@@ -158,7 +165,7 @@ async function main() {
 
     // STEP 3: Multi-Map Isolation & Legacy ID collision handling
     console.log("\nStep 3: Creating Map 2 with legacy hardcoded IDs ('root', 'idea')...");
-    const map2Id = `map_2_${Date.now()}`;
+    const map2Id = generateMapId();
     await saveWorkspaceDeskData(prisma, actor, testWsId, {
       maps: [
         ...loaded.maps,

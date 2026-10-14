@@ -26,6 +26,7 @@ import {
   getViewportForBounds,
 } from "@xyflow/react";
 import { toPng, toSvg } from "html-to-image";
+import { Link2 } from "lucide-react";
 
 import type {
   MapEdgeItem,
@@ -91,6 +92,7 @@ export function MindMapCanvas({
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [connectingSourceId, setConnectingSourceId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMatches, setSearchMatches] = useState<string[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
@@ -262,23 +264,26 @@ export function MindMapCanvas({
 
   const addChildNode = useCallback(
     (parentId?: string) => {
-      const targetParentId = parentId || selectedNodeId || nodes[0]?.id;
+      const rootNode = findRootNode(nodes, edges);
+      const targetParentId = parentId || selectedNodeId || rootNode?.id || nodes[0]?.id;
       if (!targetParentId) return;
 
       const nextId = generateNodeId();
       const nextEdgeId = generateEdgeId();
       const parentNode = nodes.find((n) => n.id === targetParentId);
+      if (!parentNode) return;
 
       const newNode: MindFlowNode = {
         id: nextId,
         type: "mind",
+        selected: true,
         position: {
           x: (parentNode?.position.x ?? 0) + 240,
           y: (parentNode?.position.y ?? 0) + 50,
         },
         data: {
           label: "New topic",
-          color: "blue",
+          color: parentNode?.data.color || "blue",
           shape: "rounded",
           fontSize: "base",
           theme: currentTheme,
@@ -293,7 +298,8 @@ export function MindMapCanvas({
         style: { stroke: themeConfig.edgeStroke, strokeWidth: 2 },
       };
 
-      let nextNodes = [...nodes, newNode];
+      const unselectedNodes = nodes.map((n) => ({ ...n, selected: false }));
+      let nextNodes = [...unselectedNodes, newNode];
       const nextEdges = [...edges, newEdge];
 
       if (currentLayout !== "freeform") {
@@ -328,14 +334,21 @@ export function MindMapCanvas({
 
   const addSiblingNode = useCallback(
     (siblingId?: string) => {
-      const targetSiblingId = siblingId || selectedNodeId || nodes[0]?.id;
+      const rootNode = findRootNode(nodes, edges);
+      const targetSiblingId = siblingId || selectedNodeId || rootNode?.id || nodes[0]?.id;
       if (!targetSiblingId) return;
+
+      // If target is root, add child instead
+      if (targetSiblingId === rootNode?.id) {
+        addChildNode(targetSiblingId);
+        return;
+      }
 
       const parentEdge = edges.find((e) => e.target === targetSiblingId);
       const parentId = parentEdge?.source;
 
       if (!parentId) {
-        // If node has no parent (e.g. root), add child instead
+        // If node has no parent, add child instead
         addChildNode(targetSiblingId);
         return;
       }
@@ -347,6 +360,7 @@ export function MindMapCanvas({
       const newNode: MindFlowNode = {
         id: nextId,
         type: "mind",
+        selected: true,
         position: {
           x: (siblingNode?.position.x ?? 0) + 20,
           y: (siblingNode?.position.y ?? 0) + 60,
@@ -368,7 +382,8 @@ export function MindMapCanvas({
         style: { stroke: themeConfig.edgeStroke, strokeWidth: 2 },
       };
 
-      let nextNodes = [...nodes, newNode];
+      const unselectedNodes = nodes.map((n) => ({ ...n, selected: false }));
+      let nextNodes = [...unselectedNodes, newNode];
       const nextEdges = [...edges, newEdge];
 
       if (currentLayout !== "freeform") {
@@ -396,6 +411,59 @@ export function MindMapCanvas({
       triggerSave,
     ]
   );
+
+  const startConnecting = useCallback((sourceId: string) => {
+    setConnectingSourceId(sourceId);
+  }, []);
+
+  const cancelConnecting = useCallback(() => {
+    setConnectingSourceId(null);
+  }, []);
+
+  const handleNodeClick = useCallback(
+    (_: React.MouseEvent, node: MindFlowNode) => {
+      if (connectingSourceId) {
+        if (connectingSourceId === node.id) {
+          setConnectingSourceId(null);
+          return;
+        }
+
+        const exists = edges.some(
+          (e) =>
+            (e.source === connectingSourceId && e.target === node.id) ||
+            (e.source === node.id && e.target === connectingSourceId)
+        );
+
+        if (!exists) {
+          const newEdge: Edge = {
+            id: generateEdgeId(),
+            source: connectingSourceId,
+            target: node.id,
+            type: "smoothstep",
+            style: {
+              stroke: themeConfig.edgeStroke,
+              strokeWidth: 2,
+              strokeDasharray: "5 5",
+            },
+            label: "relates to",
+          };
+
+          const nextEdges = [...edges, newEdge];
+          setEdges(nextEdges);
+          pushHistory(nodes, nextEdges);
+          triggerSave(nodes, nextEdges);
+        }
+
+        setConnectingSourceId(null);
+        setSelectedNodeId(node.id);
+        return;
+      }
+
+      setSelectedNodeId(node.id);
+    },
+    [connectingSourceId, edges, nodes, pushHistory, themeConfig.edgeStroke, triggerSave]
+  );
+
 
   const duplicateNode = useCallback(
     (nodeId: string) => {
@@ -783,7 +851,7 @@ export function MindMapCanvas({
       } else if (e.key === "Enter") {
         e.preventDefault();
         addSiblingNode();
-      } else if (e.key === "F2") {
+      } else if (e.key === "F2" || (e.key === " " && !e.ctrlKey && !e.metaKey)) {
         e.preventDefault();
         if (selectedNodeId) {
           setEditingNodeId(selectedNodeId);
@@ -809,8 +877,12 @@ export function MindMapCanvas({
           duplicateNode(selectedNodeId);
         }
       } else if (e.key === "Escape") {
-        setSelectedNodeId(null);
-        setEditingNodeId(null);
+        if (connectingSourceId) {
+          setConnectingSourceId(null);
+        } else {
+          setSelectedNodeId(null);
+          setEditingNodeId(null);
+        }
       }
     };
 
@@ -819,12 +891,14 @@ export function MindMapCanvas({
   }, [
     addChildNode,
     addSiblingNode,
+    connectingSourceId,
     deleteNodeSafely,
     duplicateNode,
     handleRedo,
     handleUndo,
     selectedNodeId,
   ]);
+
 
   // Export handlers
   const exportPng = async () => {
@@ -957,6 +1031,8 @@ export function MindMapCanvas({
           {...props}
           data={{
             ...props.data,
+            isSelected: selectedNodeId === props.id,
+            isConnectingSource: connectingSourceId === props.id,
             childCount: childCountMap.get(props.id) || 0,
             hasChildren: (childCountMap.get(props.id) || 0) > 0,
             isSearchMatch: searchMatches.includes(props.id),
@@ -966,6 +1042,7 @@ export function MindMapCanvas({
             onAddSibling: addSiblingNode,
             onDeleteNode: deleteNodeSafely,
             onDuplicateNode: duplicateNode,
+            onStartConnecting: startConnecting,
             onChangeColor: changeNodeColor,
             onChangeShape: changeNodeShape,
             onToggleCollapse: toggleBranchCollapse,
@@ -990,6 +1067,8 @@ export function MindMapCanvas({
           {...props}
           data={{
             ...props.data,
+            isSelected: selectedNodeId === props.id,
+            isConnectingSource: connectingSourceId === props.id,
             childCount: childCountMap.get(props.id) || 0,
             hasChildren: (childCountMap.get(props.id) || 0) > 0,
             isSearchMatch: searchMatches.includes(props.id),
@@ -999,6 +1078,7 @@ export function MindMapCanvas({
             onAddSibling: addSiblingNode,
             onDeleteNode: deleteNodeSafely,
             onDuplicateNode: duplicateNode,
+            onStartConnecting: startConnecting,
             onChangeColor: changeNodeColor,
             onChangeShape: changeNodeShape,
             onToggleCollapse: toggleBranchCollapse,
@@ -1023,6 +1103,8 @@ export function MindMapCanvas({
           {...props}
           data={{
             ...props.data,
+            isSelected: selectedNodeId === props.id,
+            isConnectingSource: connectingSourceId === props.id,
             childCount: childCountMap.get(props.id) || 0,
             hasChildren: (childCountMap.get(props.id) || 0) > 0,
             isSearchMatch: searchMatches.includes(props.id),
@@ -1032,6 +1114,7 @@ export function MindMapCanvas({
             onAddSibling: addSiblingNode,
             onDeleteNode: deleteNodeSafely,
             onDuplicateNode: duplicateNode,
+            onStartConnecting: startConnecting,
             onChangeColor: changeNodeColor,
             onChangeShape: changeNodeShape,
             onToggleCollapse: toggleBranchCollapse,
@@ -1048,12 +1131,15 @@ export function MindMapCanvas({
       changeNodeColor,
       changeNodeShape,
       childCountMap,
+      connectingSourceId,
       deleteNodeSafely,
       duplicateNode,
       edges,
       editingNodeId,
       pushHistory,
       searchMatches,
+      selectedNodeId,
+      startConnecting,
       toggleBranchCollapse,
       triggerSave,
       updateNodeLabel,
@@ -1069,7 +1155,9 @@ export function MindMapCanvas({
       ref={containerRef}
       data-testid="mind-map-canvas-container"
       data-theme={currentTheme}
-      className="relative w-full h-[calc(100vh-14rem)] min-h-[550px] rounded-2xl border overflow-hidden shadow-sm transition-colors duration-200"
+      className={`relative w-full h-[calc(100vh-14rem)] min-h-[550px] rounded-2xl border overflow-hidden shadow-sm transition-colors duration-200 ${
+        connectingSourceId ? "cursor-crosshair" : ""
+      }`}
       style={{
         backgroundColor: themeConfig.canvasBg,
         borderColor: themeConfig.toolbarBorder,
@@ -1114,6 +1202,26 @@ export function MindMapCanvas({
         onImportJson={() => fileInputRef.current?.click()}
       />
 
+      {/* Floating Relationship Connecting Indicator Banner */}
+      {connectingSourceId && (
+        <div
+          data-testid="relationship-connecting-banner"
+          className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-2 rounded-xl bg-indigo-600 text-white shadow-xl animate-in fade-in slide-in-from-top-2 border border-indigo-400/30"
+        >
+          <Link2 className="h-4 w-4 animate-pulse text-indigo-200" />
+          <span className="text-xs font-medium">
+            Connecting &ldquo;{nodes.find((n) => n.id === connectingSourceId)?.data.label || "topic"}&rdquo; &rarr; Click target topic
+          </span>
+          <button
+            type="button"
+            className="ml-2 text-xs font-semibold px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors"
+            onClick={cancelConnecting}
+          >
+            Cancel (Esc)
+          </button>
+        </div>
+      )}
+
       {/* React Flow Viewport */}
       <ReactFlow
         nodes={nodes}
@@ -1123,8 +1231,9 @@ export function MindMapCanvas({
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onInit={setReactFlowInstance}
-        onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+        onNodeClick={handleNodeClick}
         onPaneClick={() => {
+          setConnectingSourceId(null);
           setSelectedNodeId(null);
           setEditingNodeId(null);
         }}

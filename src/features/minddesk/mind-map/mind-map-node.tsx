@@ -4,6 +4,7 @@ import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Handle,
   Position,
+  NodeToolbar,
   type Node,
   type NodeProps,
 } from "@xyflow/react";
@@ -19,6 +20,8 @@ import {
   Shapes,
   Smile,
   Link as LinkIcon,
+  Link2,
+  GitBranch,
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +31,8 @@ import { THEME_CONFIGS, COLOR_OPTIONS, SHAPE_OPTIONS, EMOJI_PALETTE } from "./th
 export type FlowNodeData = MapNodeItem["data"] & {
   theme?: MindMapTheme;
   isSearchMatch?: boolean;
+  isSelected?: boolean;
+  isConnectingSource?: boolean;
   childCount?: number;
   hasChildren?: boolean;
   onLabelChange?: (id: string, newLabel: string) => void;
@@ -35,6 +40,7 @@ export type FlowNodeData = MapNodeItem["data"] & {
   onAddSibling?: (nodeId: string) => void;
   onDeleteNode?: (nodeId: string) => void;
   onDuplicateNode?: (nodeId: string) => void;
+  onStartConnecting?: (nodeId: string) => void;
   onChangeColor?: (nodeId: string, color: string) => void;
   onChangeShape?: (nodeId: string, shape: "rounded" | "pill" | "rectangle" | "diamond" | "circle") => void;
   onOpenNoteEditor?: (nodeId: string) => void;
@@ -44,6 +50,7 @@ export type FlowNodeData = MapNodeItem["data"] & {
   isEditing?: boolean;
   setEditingNodeId?: (id: string | null) => void;
 };
+
 
 export type MindFlowNode = Node<FlowNodeData>;
 
@@ -62,6 +69,8 @@ export const MindMapNode = memo(function MindMapNode({
   const colorToken = theme.colors[data.color] || theme.colors.violet;
 
   const isRoot = Boolean(data.isRoot);
+  const isSelected = Boolean(selected || data.isSelected);
+  const isConnectingSource = Boolean(data.isConnectingSource);
   const isEditing = localEditing || data.isEditing;
 
   useEffect(() => {
@@ -70,12 +79,15 @@ export const MindMapNode = memo(function MindMapNode({
 
   useEffect(() => {
     if (isEditing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      setEditValue(data.label || "");
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      });
     } else {
       setActiveMenu(null);
     }
-  }, [isEditing]);
+  }, [isEditing, data.label]);
 
   const commitEdit = useCallback(() => {
     setLocalEditing(false);
@@ -113,13 +125,17 @@ export const MindMapNode = memo(function MindMapNode({
         backgroundColor: theme.rootBg,
         color: theme.rootText,
         borderColor: theme.rootBorder,
-        boxShadow: selected ? `0 0 0 3px ${theme.edgeStrokeSelected}` : theme.nodeShadow,
+        boxShadow: isSelected
+          ? `0 0 0 3px ${theme.edgeStrokeSelected}, 0 4px 16px rgba(0,0,0,0.18)`
+          : theme.nodeShadow,
       }
     : {
         backgroundColor: colorToken.bg,
         color: colorToken.text,
         borderColor: colorToken.border,
-        boxShadow: selected ? `0 0 0 3px ${theme.edgeStrokeSelected}` : theme.nodeShadow,
+        boxShadow: isSelected
+          ? `0 0 0 3px ${theme.edgeStrokeSelected}, 0 4px 16px rgba(0,0,0,0.14)`
+          : theme.nodeShadow,
       };
 
   return (
@@ -129,23 +145,44 @@ export const MindMapNode = memo(function MindMapNode({
         type="target"
         position={Position.Left}
         id="left"
-        className="!w-2.5 !h-2.5 !border-2 !border-background transition-transform group-hover:scale-125"
+        className="!w-3 !h-3 !border-2 !border-background transition-transform group-hover:scale-125"
         style={{ backgroundColor: colorToken.accent }}
       />
-      {/* Target handle on Top for vertical layouts */}
+      {/* Source handle on Right */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="right"
+        className="!w-3 !h-3 !border-2 !border-background transition-transform group-hover:scale-125"
+        style={{ backgroundColor: colorToken.accent }}
+      />
+      {/* Target handle on Top */}
       <Handle
         type="target"
         position={Position.Top}
         id="top"
-        className="!w-2.5 !h-2.5 !border-2 !border-background opacity-0 group-hover:opacity-100 transition-opacity"
+        className="!w-3 !h-3 !border-2 !border-background opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{ backgroundColor: colorToken.accent }}
+      />
+      {/* Source handle on Bottom */}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom"
+        className="!w-3 !h-3 !border-2 !border-background opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ backgroundColor: colorToken.accent }}
       />
 
-      {/* Floating Contextual Toolbar for Selected Node */}
-      {selected && !isEditing && (
+      {/* Floating NodeToolbar for Selected Topic (Xmind / MindMeister style) */}
+      <NodeToolbar
+        isVisible={isSelected && !isEditing}
+        position={Position.Top}
+        offset={10}
+        align="center"
+      >
         <div
           data-testid="node-context-toolbar"
-          className="absolute -top-11 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 rounded-lg border px-1.5 py-1 shadow-lg backdrop-blur-md transition-all animate-in fade-in zoom-in-95"
+          className="flex items-center gap-1 rounded-xl border px-1.5 py-1 shadow-xl backdrop-blur-md transition-all animate-in fade-in zoom-in-95 pointer-events-auto"
           style={{
             backgroundColor: theme.toolbarBg,
             borderColor: theme.toolbarBorder,
@@ -175,7 +212,7 @@ export const MindMapNode = memo(function MindMapNode({
               title="Add Sibling (Enter)"
               onClick={() => data.onAddSibling?.(id)}
             >
-              <span className="font-bold text-xs">+</span>
+              <GitBranch className="h-3.5 w-3.5" />
             </Button>
           )}
 
@@ -185,7 +222,7 @@ export const MindMapNode = memo(function MindMapNode({
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-xs rounded hover:bg-black/5 dark:hover:bg-white/10"
-            title="Edit Topic (F2)"
+            title="Edit Topic (Double-click or F2)"
             onClick={() => {
               setLocalEditing(true);
               data.setEditingNodeId?.(id);
@@ -193,6 +230,19 @@ export const MindMapNode = memo(function MindMapNode({
           >
             <Edit3 className="h-3.5 w-3.5" />
           </Button>
+
+          {/* Connect / Relationship */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-xs rounded hover:bg-black/5 dark:hover:bg-white/10 text-indigo-500 hover:text-indigo-600"
+            title="Connect / Relationship to topic"
+            onClick={() => data.onStartConnecting?.(id)}
+          >
+            <Link2 className="h-3.5 w-3.5" />
+          </Button>
+
 
           {/* Color Palette Toggle */}
           <div className="relative">
@@ -345,14 +395,19 @@ export const MindMapNode = memo(function MindMapNode({
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
-      )}
+      </NodeToolbar>
 
       {/* Main Node Card */}
       <div
         data-testid={`mindmap-node-${id}`}
         className={`relative border transition-all duration-150 cursor-pointer min-w-[150px] max-w-[320px] ${shapeClass} ${
           data.isSearchMatch ? "ring-4 ring-amber-400 ring-offset-2 animate-pulse" : ""
+        } ${
+          isConnectingSource ? "ring-4 ring-indigo-500 ring-offset-2 animate-pulse" : ""
+        } ${
+          isSelected ? "ring-2 ring-primary ring-offset-1" : ""
         }`}
+
         style={nodeStyle}
         onDoubleClick={(e) => {
           e.stopPropagation();
@@ -456,23 +511,7 @@ export const MindMapNode = memo(function MindMapNode({
           </button>
         )}
       </div>
-
-      {/* Source handle on Right */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="right"
-        className="!w-2.5 !h-2.5 !border-2 !border-background transition-transform group-hover:scale-125"
-        style={{ backgroundColor: colorToken.accent }}
-      />
-      {/* Source handle on Bottom for vertical layouts */}
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="bottom"
-        className="!w-2.5 !h-2.5 !border-2 !border-background opacity-0 group-hover:opacity-100 transition-opacity"
-        style={{ backgroundColor: colorToken.accent }}
-      />
     </div>
   );
 });
+

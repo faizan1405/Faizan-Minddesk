@@ -7,6 +7,7 @@ import {
 import {
   applyLayout,
   createDefaultMindMap,
+  deterministicUuid,
   findRootNode,
   generateEdgeId,
   generateMapId,
@@ -14,6 +15,7 @@ import {
   getChildrenIds,
   getParentId,
   getSubtreeNodeIds,
+  isValidUuid,
   sanitizeMapIdentifiers,
   willCreateCycle,
 } from "../utils/mind-map-utils";
@@ -21,6 +23,21 @@ import { THEME_CONFIGS } from "../mind-map/theme-tokens";
 import type { MapEdgeItem, MapNodeItem, MindMapItem } from "../types";
 
 describe("Mind Map Identifier Sanitization & Collision Prevention", () => {
+  it("validates and generates deterministic 36-char UUIDs without length overflow", () => {
+    expect(isValidUuid("not-a-uuid")).toBe(false);
+    expect(isValidUuid("node_12345678-1234-1234-1234-1234567890ab")).toBe(false); // 41 chars
+    expect(isValidUuid("550e8400-e29b-41d4-a716-446655440000")).toBe(true); // 36 chars
+
+    const hash1 = deterministicUuid("test-seed-1");
+    const hash2 = deterministicUuid("test-seed-1");
+    const hash3 = deterministicUuid("test-seed-2");
+
+    expect(hash1).toBe(hash2); // deterministic
+    expect(hash1).not.toBe(hash3);
+    expect(hash1).toHaveLength(36);
+    expect(isValidUuid(hash1)).toBe(true);
+  });
+
   it("sanitizes legacy hardcoded IDs (root, idea, root-idea) to map-scoped unique IDs", () => {
     const legacyMap: MindMapItem = {
       id: "map-123",
@@ -53,16 +70,16 @@ describe("Mind Map Identifier Sanitization & Collision Prevention", () => {
 
     const sanitized = sanitizeMapIdentifiers(legacyMap);
 
-    expect(sanitized.nodes[0].id).toBe("map-123_root");
-    expect(sanitized.nodes[1].id).toBe("map-123_idea");
-    expect(sanitized.edges[0].id).toBe("map-123_root-idea");
-    expect(sanitized.edges[0].source).toBe("map-123_root");
-    expect(sanitized.edges[0].target).toBe("map-123_idea");
+    expect(sanitized.nodes[0].id).toHaveLength(36);
+    expect(sanitized.nodes[1].id).toHaveLength(36);
+    expect(sanitized.edges[0].id).toHaveLength(36);
+    expect(sanitized.edges[0].source).toBe(sanitized.nodes[0].id);
+    expect(sanitized.edges[0].target).toBe(sanitized.nodes[1].id);
 
     // Also verify sanitizeInRepo has identical safe behavior
     const sanitizedRepo = sanitizeInRepo(legacyMap);
-    expect(sanitizedRepo.nodes[0].id).toBe("map-123_root");
-    expect(sanitizedRepo.edges[0].source).toBe("map-123_root");
+    expect(sanitizedRepo.nodes[0].id).toBe(sanitized.nodes[0].id);
+    expect(sanitizedRepo.edges[0].source).toBe(sanitized.nodes[0].id);
   });
 
   it("prevents collisions across multiple maps with previously identical IDs", () => {
@@ -98,53 +115,77 @@ describe("Mind Map Identifier Sanitization & Collision Prevention", () => {
 
     expect(new Set(allNodeIds).size).toBe(4);
     expect(new Set(allEdgeIds).size).toBe(2);
+    allNodeIds.forEach((id) => expect(id.length).toBeLessThanOrEqual(36));
+    allEdgeIds.forEach((id) => expect(id.length).toBeLessThanOrEqual(36));
   });
 
-  it("leaves modern maps with UUIDs untouched", () => {
+  it("leaves modern maps with standard 36-char UUIDs untouched", () => {
+    const validUuid1 = "11111111-1111-4111-8111-111111111111";
+    const validUuid2 = "22222222-2222-4222-8222-222222222222";
+    const validEdgeUuid = "33333333-3333-4333-8333-333333333333";
+    const validMapUuid = "44444444-4444-4444-8444-444444444444";
+
     const uuidMap: MindMapItem = {
-      id: "map-999",
+      id: validMapUuid,
       title: "UUID Map",
       createdAt: "2026-10-14T10:00:00.000Z",
       updatedAt: "2026-10-14T10:00:00.000Z",
       nodes: [
-        { id: "node_custom_1", type: "mind", position: { x: 0, y: 0 }, data: { label: "Root", isRoot: true } },
-        { id: "node_custom_2", type: "mind", position: { x: 200, y: 0 }, data: { label: "Child" } },
+        { id: validUuid1, type: "mind", position: { x: 0, y: 0 }, data: { label: "Root", isRoot: true } },
+        { id: validUuid2, type: "mind", position: { x: 200, y: 0 }, data: { label: "Child" } },
       ],
-      edges: [{ id: "edge_custom_1", source: "node_custom_1", target: "node_custom_2" }],
+      edges: [{ id: validEdgeUuid, source: validUuid1, target: validUuid2 }],
     };
 
     const result = sanitizeMapIdentifiers(uuidMap);
-    expect(result.nodes[0].id).toBe("node_custom_1");
-    expect(result.nodes[1].id).toBe("node_custom_2");
-    expect(result.edges[0].id).toBe("edge_custom_1");
+    expect(result.id).toBe(validMapUuid);
+    expect(result.nodes[0].id).toBe(validUuid1);
+    expect(result.nodes[1].id).toBe(validUuid2);
+    expect(result.edges[0].id).toBe(validEdgeUuid);
   });
 
-  it("generates unique IDs using ID generators", () => {
+  it("generates unique 36-character UUIDs fitting MariaDB VARCHAR(36)", () => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const n1 = generateNodeId();
     const n2 = generateNodeId();
     const e1 = generateEdgeId();
     const m1 = generateMapId();
 
-    expect(n1).toMatch(/^node_/);
-    expect(n2).toMatch(/^node_/);
+    expect(n1).toMatch(uuidRegex);
+    expect(n2).toMatch(uuidRegex);
+    expect(n1.length).toBe(36);
+    expect(n2.length).toBe(36);
     expect(n1).not.toBe(n2);
-    expect(e1).toMatch(/^edge_/);
-    expect(m1).toMatch(/^map_/);
+    expect(e1).toMatch(uuidRegex);
+    expect(e1.length).toBe(36);
+    expect(m1).toMatch(uuidRegex);
+    expect(m1.length).toBe(36);
   });
 
-  it("creates a default mind map with collision-proof IDs", () => {
+  it("creates a default mind map with collision-proof 36-character IDs", () => {
     const map = createDefaultMindMap("Strategy 2026", "paper", "horizontal");
 
     expect(map.title).toBe("Strategy 2026");
     expect(map.theme).toBe("paper");
     expect(map.layout).toBe("horizontal");
+    expect(map.id.length).toBe(36);
     expect(map.nodes.length).toBeGreaterThanOrEqual(2);
     expect(map.edges.length).toBeGreaterThanOrEqual(1);
 
-    // Verify all IDs are prefixed and distinct
+    // Verify all IDs are valid 36-character UUIDs and distinct
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const nodeIds = map.nodes.map((n) => n.id);
     expect(new Set(nodeIds).size).toBe(map.nodes.length);
-    nodeIds.forEach((id) => expect(id).toMatch(/^node_/));
+    nodeIds.forEach((id) => {
+      expect(id).toMatch(uuidRegex);
+      expect(id.length).toBe(36);
+    });
+
+    const edgeIds = map.edges.map((e) => e.id);
+    edgeIds.forEach((id) => {
+      expect(id).toMatch(uuidRegex);
+      expect(id.length).toBe(36);
+    });
 
     // Verify root node exists
     const root = findRootNode(map.nodes, map.edges);
