@@ -12,6 +12,7 @@ import {
   SidebarClose,
   SidebarOpen,
   Star,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,12 @@ import { useDeskData } from "../store";
 import type { NoteItem } from "../types";
 import { NoteEditor } from "./note-editor";
 import { NoteSidebar } from "./components/note-sidebar";
+import { ProjectFilter } from "./components/project-filter";
+import {
+  filterNotesByProject,
+  getProjectHueColor,
+  type ProjectFilterValue,
+} from "./types";
 
 interface NotesViewProps {
   favoriteOnly?: boolean;
@@ -31,6 +38,8 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
   const [sortBy, setSortBy] = useState<"updated" | "alpha">("updated");
   const [viewLayout, setViewLayout] = useState<"grid" | "list">("grid");
   const [showDocSidebar, setShowDocSidebar] = useState(true);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [projectFilter, setProjectFilter] = useState<ProjectFilterValue>("all");
 
   // Active open note ID
   const [openNoteId, setOpenNoteId] = useState<string | null>(() => {
@@ -48,9 +57,33 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
     }
   }, [data.notes, initialNoteId, selectedItem, setSelectedItem]);
 
+  // Selected project object if a specific project is filtered
+  const activeFilteredProject = useMemo(() => {
+    if (projectFilter !== "all" && projectFilter !== "unassigned") {
+      return data.projects.find((p) => p.id === projectFilter) || null;
+    }
+    return null;
+  }, [data.projects, projectFilter]);
+
   // Create note
-  const createNote = (parentId?: string) => {
+  // Default to Unassigned unless explicitly targeting a project or creating while a specific project is filtered
+  const createNote = (parentId?: string, targetProjectId?: string) => {
     const id = crypto.randomUUID();
+    let assignedProjectId: string | undefined = undefined;
+
+    if (targetProjectId) {
+      assignedProjectId = targetProjectId;
+    } else if (parentId) {
+      const parent = data.notes.find((n) => n.id === parentId);
+      if (parent?.projectId && data.projects.some((p) => p.id === parent.projectId)) {
+        assignedProjectId = parent.projectId;
+      }
+    } else if (projectFilter !== "all" && projectFilter !== "unassigned") {
+      if (data.projects.some((p) => p.id === projectFilter)) {
+        assignedProjectId = projectFilter;
+      }
+    }
+
     const newNote: NoteItem = {
       id,
       title: "Untitled note",
@@ -58,8 +91,8 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
       content: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Start writing…"}]}]}',
       icon: "✎",
       updated: "Just now",
-      projectId: data.projects[0]?.id || "",
       starred: false,
+      ...(assignedProjectId ? { projectId: assignedProjectId } : {}),
       ...(parentId ? { parentId } : {}),
     };
     update((current) => ({ ...current, notes: [newNote, ...current.notes] }));
@@ -86,7 +119,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
       ...current,
       notes: current.notes
         .filter((item) => item.id !== noteId)
-        // Also reparent or detach child notes so they aren't orphaned
+        // Reparent or detach child notes so they aren't orphaned
         .map((item) => (item.parentId === noteId ? { ...item, parentId: null } : item)),
     }));
     if (openNoteId === noteId) {
@@ -107,17 +140,23 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
   // Filter & sort notes for gallery view
   const notes = useMemo(() => {
     const q = query.toLowerCase().trim();
-    let result = data.notes.filter((note) => {
-      if (favoriteOnly && !note.starred) return false;
-      if (!q) return true;
-      return `${note.title} ${note.excerpt} ${note.content}`.toLowerCase().includes(q);
-    });
+    let result = filterNotesByProject(data.notes, projectFilter, data.projects);
+
+    if (favoriteOnly) {
+      result = result.filter((note) => note.starred);
+    }
+
+    if (q) {
+      result = result.filter((note) =>
+        `${note.title} ${note.excerpt} ${note.content}`.toLowerCase().includes(q)
+      );
+    }
 
     if (sortBy === "alpha") {
       result = [...result].sort((a, b) => a.title.localeCompare(b.title));
     }
     return result;
-  }, [data.notes, favoriteOnly, query, sortBy]);
+  }, [data.notes, data.projects, favoriteOnly, projectFilter, query, sortBy]);
 
   // Open note details if one is selected
   const activeNote = openNoteId ? data.notes.find((item) => item.id === openNoteId) : null;
@@ -125,18 +164,50 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
   if (activeNote) {
     return (
       <div className="flex h-[calc(100vh-4rem)] w-full overflow-hidden">
-        {/* Notion-style Document Sidebar in Editor mode */}
+        {/* Desktop Notion-style Document Sidebar in Editor mode */}
         {showDocSidebar && (
           <div className="hidden lg:block shrink-0 h-full">
             <NoteSidebar
               notes={data.notes}
               activeNoteId={activeNote.id}
               onSelectNote={(id) => setOpenNoteId(id)}
-              onCreateNote={(parentId) => createNote(parentId)}
+              onCreateNote={(parentId, targetProjectId) => createNote(parentId, targetProjectId)}
               onDeleteNote={deleteNote}
               onToggleStar={toggleStar}
               projects={data.projects}
+              selectedProject={projectFilter}
+              onSelectProject={setProjectFilter}
             />
+          </div>
+        )}
+
+        {/* Mobile Slide-Over Sidebar Drawer */}
+        {showMobileSidebar && (
+          <div className="fixed inset-0 z-50 flex lg:hidden">
+            <div
+              className="fixed inset-0 bg-background/80 backdrop-blur-xs transition-opacity"
+              onClick={() => setShowMobileSidebar(false)}
+            />
+            <div className="relative z-50 flex w-full max-w-xs flex-1 flex-col bg-card shadow-2xl animate-in slide-in-from-left duration-200">
+              <NoteSidebar
+                notes={data.notes}
+                activeNoteId={activeNote.id}
+                onSelectNote={(id) => {
+                  setOpenNoteId(id);
+                  setShowMobileSidebar(false);
+                }}
+                onCreateNote={(parentId, targetProjectId) => {
+                  createNote(parentId, targetProjectId);
+                  setShowMobileSidebar(false);
+                }}
+                onDeleteNote={deleteNote}
+                onToggleStar={toggleStar}
+                projects={data.projects}
+                selectedProject={projectFilter}
+                onSelectProject={setProjectFilter}
+                onCloseMobile={() => setShowMobileSidebar(false)}
+              />
+            </div>
           </div>
         )}
 
@@ -146,7 +217,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
             <Button
               variant="outline"
               size="icon"
-              className="size-8 rounded-lg bg-card/80 backdrop-blur-md shadow-xs"
+              className="size-8 rounded-lg bg-card/80 backdrop-blur-md shadow-xs cursor-pointer"
               onClick={() => setShowDocSidebar(!showDocSidebar)}
               title={showDocSidebar ? "Hide sidebar" : "Show sidebar"}
             >
@@ -175,6 +246,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
             }}
             onDuplicateNote={() => duplicateNote(activeNote)}
             onDeleteNote={() => deleteNote(activeNote.id)}
+            onToggleMobileSidebar={() => setShowMobileSidebar(true)}
           />
         </div>
       </div>
@@ -194,22 +266,54 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
             Notion-style documents, structured thoughts, references, and room to explore.
           </p>
         </div>
-        <Button onClick={() => createNote()} className="gap-1.5 shadow-sm">
-          <Plus className="size-4" /> New note
+        <Button
+          onClick={() => createNote()}
+          className="gap-1.5 shadow-sm cursor-pointer"
+        >
+          <Plus className="size-4" />
+          <span>
+            {activeFilteredProject ? `New note in ${activeFilteredProject.name}` : "New note"}
+          </span>
         </Button>
       </header>
 
-      {/* Filter and Search Bar */}
+      {/* Filter by Project Bar */}
+      <div className="mb-6 rounded-2xl border border-border/80 bg-card/60 p-4 shadow-2xs">
+        <ProjectFilter
+          projects={data.projects}
+          notes={data.notes}
+          value={projectFilter}
+          onChange={setProjectFilter}
+        />
+      </div>
+
+      {/* Search, Sort and Layout Controls */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex w-full max-w-md items-center gap-2 rounded-xl border border-input bg-card px-3 shadow-xs">
           <Search className="size-4 text-muted-foreground" />
           <input
             aria-label="Search notes"
             className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            placeholder="Find a note…"
+            placeholder={
+              activeFilteredProject
+                ? `Find a note in ${activeFilteredProject.name}…`
+                : projectFilter === "unassigned"
+                ? "Find an unassigned note…"
+                : "Find a note…"
+            }
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="text-muted-foreground hover:text-foreground cursor-pointer"
+              title="Clear search"
+            >
+              <X className="size-4" />
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -217,7 +321,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as "updated" | "alpha")}
-            className="h-9 rounded-lg border border-border bg-card px-2.5 text-xs text-muted-foreground outline-none focus:border-primary"
+            className="h-9 rounded-lg border border-border bg-card px-2.5 text-xs text-muted-foreground outline-none focus:border-primary cursor-pointer"
           >
             <option value="updated">Recently updated</option>
             <option value="alpha">Alphabetical</option>
@@ -228,7 +332,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
             <Button
               variant={viewLayout === "grid" ? "secondary" : "ghost"}
               size="icon"
-              className="size-8"
+              className="size-8 cursor-pointer"
               onClick={() => setViewLayout("grid")}
               title="Grid layout"
             >
@@ -237,7 +341,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
             <Button
               variant={viewLayout === "list" ? "secondary" : "ghost"}
               size="icon"
-              className="size-8"
+              className="size-8 cursor-pointer"
               onClick={() => setViewLayout("list")}
               title="List layout"
             >
@@ -256,8 +360,12 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
           }
         >
           {notes.map((note) => {
-            const project = data.projects.find((item) => item.id === note.projectId);
-            const parentNote = note.parentId ? data.notes.find((item) => item.id === note.parentId) : null;
+            const project = note.projectId
+              ? data.projects.find((item) => item.id === note.projectId) || null
+              : null;
+            const parentNote = note.parentId
+              ? data.notes.find((item) => item.id === note.parentId) || null
+              : null;
 
             return (
               <article
@@ -268,12 +376,12 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-lg shadow-2xs">
-                      {note.icon}
+                      {note.icon || "📄"}
                     </span>
                     {parentNote && (
-                      <span className="flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[10px] text-muted-foreground truncate">
-                        <span>{parentNote.icon}</span>
-                        <span className="truncate">{parentNote.title}</span>
+                      <span className="flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[10px] text-muted-foreground truncate max-w-[160px]">
+                        <span>{parentNote.icon || "📄"}</span>
+                        <span className="truncate">{parentNote.title || "Untitled"}</span>
                       </span>
                     )}
                   </div>
@@ -282,7 +390,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="size-8 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                       aria-label="Add sub-page"
                       title="Add sub-page"
                       onClick={() => createNote(note.id)}
@@ -293,7 +401,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-8"
+                      className="size-8 cursor-pointer"
                       aria-label={note.starred ? "Remove note from favorites" : "Add note to favorites"}
                       onClick={() => toggleStar(note.id)}
                     >
@@ -308,7 +416,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
                 <button
                   type="button"
                   onClick={() => setOpenNoteId(note.id)}
-                  className="text-left text-base font-semibold hover:text-primary transition-colors truncate"
+                  className="text-left text-base font-semibold hover:text-primary transition-colors truncate cursor-pointer"
                 >
                   {note.title || "Untitled"}
                 </button>
@@ -320,11 +428,22 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
 
                 {/* Footer Metadata */}
                 <div className="mt-auto flex items-center justify-between pt-5 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5">
-                    <FolderOpen className="size-3.5" />
-                    {project?.name ?? "Personal"}
-                  </span>
-                  <span>{note.updated}</span>
+                  {project ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground/80 truncate max-w-[180px]">
+                      <span
+                        className="size-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: getProjectHueColor(project.hue) }}
+                      />
+                      <FolderOpen className="size-3.5 text-primary shrink-0" />
+                      <span className="truncate">{project.name}</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground/70">
+                      <FileText className="size-3.5" />
+                      <span>Unassigned</span>
+                    </span>
+                  )}
+                  <span className="shrink-0">{note.updated}</span>
                 </div>
               </article>
             );
@@ -335,13 +454,52 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
           <div className="grid size-12 place-items-center rounded-2xl bg-muted text-muted-foreground mb-3">
             <FileText className="size-6" />
           </div>
-          <h3 className="text-base font-semibold">{query ? "No notes found" : "No notes yet"}</h3>
+          <h3 className="text-base font-semibold">
+            {query
+              ? "No notes found"
+              : projectFilter === "unassigned"
+              ? "No unassigned notes"
+              : activeFilteredProject
+              ? `No notes in ${activeFilteredProject.name}`
+              : favoriteOnly
+              ? "No favorite notes"
+              : "No notes yet"}
+          </h3>
           <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-            {query ? "Try adjusting your search terms." : "Capture thoughts, ideas, or meeting notes."}
+            {query
+              ? `No documents matched "${query}". Try adjusting your search.`
+              : projectFilter === "unassigned"
+              ? "All your notes currently belong to MindDesk projects."
+              : activeFilteredProject
+              ? `Gather notes, specifications, or meeting minutes for ${activeFilteredProject.name}.`
+              : favoriteOnly
+              ? "Star documents to keep your most important work at your fingertips."
+              : "Capture thoughts, ideas, or meeting notes."}
           </p>
-          <Button onClick={() => createNote()} className="mt-4 gap-1.5">
-            <Plus className="size-4" /> {query ? "Write a note" : "Create your first note"}
-          </Button>
+          <div className="mt-4 flex items-center gap-2">
+            {query && (
+              <Button variant="outline" onClick={() => setQuery("")} className="cursor-pointer">
+                Clear search
+              </Button>
+            )}
+            {projectFilter !== "all" && !query && (
+              <Button
+                variant="outline"
+                onClick={() => setProjectFilter("all")}
+                className="cursor-pointer"
+              >
+                View all notes
+              </Button>
+            )}
+            <Button onClick={() => createNote()} className="gap-1.5 cursor-pointer">
+              <Plus className="size-4" />
+              <span>
+                {activeFilteredProject
+                  ? `Write note in ${activeFilteredProject.name}`
+                  : "Create note"}
+              </span>
+            </Button>
+          </div>
         </div>
       )}
     </section>

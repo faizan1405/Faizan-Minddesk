@@ -18,6 +18,10 @@ import {
 import type { ProfilePreferencesJson } from "@/features/auth/types";
 import type { CalendarSettings } from "@/features/calendar/types";
 import type { NotificationPreferences } from "@/features/notifications/types";
+import {
+  DEFAULT_PREFERENCES,
+  type UserSettingsPreferences,
+} from "@/features/settings/types";
 
 export type DbClient = PrismaClient | Prisma.TransactionClient;
 
@@ -403,11 +407,59 @@ export function reconcileProfilePreferences(
       },
       notifications: {
         ...(currentPrefs.notifications || {}),
-        ...(incomingData.notifications !== undefined
-          ? { notifications: incomingData.notifications }
+        notifications:
+          incomingData.notifications !== undefined
+            ? incomingData.notifications
+            : currentPrefs.notifications?.notifications || [],
+        preferences: {
+          ...(currentPrefs.notifications?.preferences || {}),
+          ...(incomingData.notificationPreferences || {}),
+        },
+        settings: {
+          ...(currentPrefs.notifications?.settings || DEFAULT_PREFERENCES.notifications),
+          ...(incomingData.notificationPreferences?.enabled !== undefined
+            ? { enabled: incomingData.notificationPreferences.enabled }
+            : {}),
+          ...(incomingData.notificationPreferences?.browserNotificationsEnabled !== undefined
+            ? { browserNotifications: incomingData.notificationPreferences.browserNotificationsEnabled }
+            : {}),
+          ...(incomingData.notificationPreferences?.quietHoursEnabled !== undefined
+            ? { quietHoursEnabled: incomingData.notificationPreferences.quietHoursEnabled }
+            : {}),
+          ...(incomingData.notificationPreferences?.quietHoursStart
+            ? { quietHoursStart: incomingData.notificationPreferences.quietHoursStart }
+            : {}),
+          ...(incomingData.notificationPreferences?.quietHoursEnd
+            ? { quietHoursEnd: incomingData.notificationPreferences.quietHoursEnd }
+            : {}),
+          ...(incomingData.notificationPreferences?.categories?.tasks !== undefined
+            ? { taskReminders: incomingData.notificationPreferences.categories.tasks }
+            : {}),
+          ...(incomingData.notificationPreferences?.categories?.calendar !== undefined
+            ? { calendarReminders: incomingData.notificationPreferences.categories.calendar }
+            : {}),
+          ...(incomingData.notificationPreferences?.dailySummaryEnabled !== undefined
+            ? { dailyDigest: incomingData.notificationPreferences.dailySummaryEnabled }
+            : {}),
+        },
+      },
+      appearance: {
+        ...(currentPrefs.appearance || DEFAULT_PREFERENCES.appearance),
+        ...(incomingData.theme !== undefined ? { theme: incomingData.theme } : {}),
+      },
+      productivity: {
+        ...(currentPrefs.productivity || DEFAULT_PREFERENCES.productivity),
+        ...(incomingData.calendarSettings?.defaultView
+          ? { defaultCalendarView: incomingData.calendarSettings.defaultView }
           : {}),
-        ...(incomingData.notificationPreferences !== undefined
-          ? { preferences: incomingData.notificationPreferences }
+        ...(incomingData.calendarSettings?.weekStartsOn !== undefined
+          ? { weekStartsOn: incomingData.calendarSettings.weekStartsOn }
+          : {}),
+        ...(incomingData.calendarSettings?.timeFormat
+          ? { timeFormat: incomingData.calendarSettings.timeFormat }
+          : {}),
+        ...(incomingData.calendarSettings?.defaultDurationMinutes !== undefined
+          ? { defaultDurationMinutes: incomingData.calendarSettings.defaultDurationMinutes }
           : {}),
       },
     };
@@ -552,6 +604,52 @@ export function reconcileProfilePreferences(
         ...(currentPrefs.notifications?.preferences || {}),
         ...(incomingData.notificationPreferences || {}),
       },
+      settings: {
+        ...(currentPrefs.notifications?.settings || DEFAULT_PREFERENCES.notifications),
+        ...(incomingData.notificationPreferences?.enabled !== undefined
+          ? { enabled: incomingData.notificationPreferences.enabled }
+          : {}),
+        ...(incomingData.notificationPreferences?.browserNotificationsEnabled !== undefined
+          ? { browserNotifications: incomingData.notificationPreferences.browserNotificationsEnabled }
+          : {}),
+        ...(incomingData.notificationPreferences?.quietHoursEnabled !== undefined
+          ? { quietHoursEnabled: incomingData.notificationPreferences.quietHoursEnabled }
+          : {}),
+        ...(incomingData.notificationPreferences?.quietHoursStart
+          ? { quietHoursStart: incomingData.notificationPreferences.quietHoursStart }
+          : {}),
+        ...(incomingData.notificationPreferences?.quietHoursEnd
+          ? { quietHoursEnd: incomingData.notificationPreferences.quietHoursEnd }
+          : {}),
+        ...(incomingData.notificationPreferences?.categories?.tasks !== undefined
+          ? { taskReminders: incomingData.notificationPreferences.categories.tasks }
+          : {}),
+        ...(incomingData.notificationPreferences?.categories?.calendar !== undefined
+          ? { calendarReminders: incomingData.notificationPreferences.categories.calendar }
+          : {}),
+        ...(incomingData.notificationPreferences?.dailySummaryEnabled !== undefined
+          ? { dailyDigest: incomingData.notificationPreferences.dailySummaryEnabled }
+          : {}),
+      },
+    },
+    appearance: {
+      ...(currentPrefs.appearance || DEFAULT_PREFERENCES.appearance),
+      ...(incomingData.theme !== undefined ? { theme: incomingData.theme } : {}),
+    },
+    productivity: {
+      ...(currentPrefs.productivity || DEFAULT_PREFERENCES.productivity),
+      ...(incomingData.calendarSettings?.defaultView
+        ? { defaultCalendarView: incomingData.calendarSettings.defaultView }
+        : {}),
+      ...(incomingData.calendarSettings?.weekStartsOn !== undefined
+        ? { weekStartsOn: incomingData.calendarSettings.weekStartsOn }
+        : {}),
+      ...(incomingData.calendarSettings?.timeFormat
+        ? { timeFormat: incomingData.calendarSettings.timeFormat }
+        : {}),
+      ...(incomingData.calendarSettings?.defaultDurationMinutes !== undefined
+        ? { defaultDurationMinutes: incomingData.calendarSettings.defaultDurationMinutes }
+        : {}),
     },
   };
 
@@ -1154,7 +1252,7 @@ async function executeSaveWorkspaceDeskData(
       conflictReconciled: reconciled.conflictReconciled,
       preferencesVersion: reconciled.preferencesVersion,
     };
-  });
+  }, { maxWait: 15000, timeout: 30000 });
 }
 
 export interface ImportPreviewResult {
@@ -1309,3 +1407,290 @@ export async function executeLocalDataImport(
     importedCounts: preview.counts,
   };
 }
+
+export interface UpdateProfileSettingsInput {
+  fullName?: string;
+  avatarUrl?: string | null;
+  preferences?: Partial<{
+    appearance: Partial<UserSettingsPreferences["appearance"]>;
+    productivity: Partial<UserSettingsPreferences["productivity"]>;
+    notifications: Partial<UserSettingsPreferences["notifications"]>;
+  }>;
+  preferencesVersion?: number;
+}
+
+export interface UpdateProfileSettingsResult {
+  success: boolean;
+  fullName: string;
+  avatarUrl: string | null;
+  preferences: UserSettingsPreferences;
+  preferencesVersion: number;
+}
+
+/**
+ * Atomically updates user profile and preferences in MySQL under strict concurrency locking.
+ * Uses process-level queue serialization and InnoDB row-level locking (SELECT ... FOR UPDATE)
+ * to ensure that Settings updates NEVER erase Calendar events, Habits, Routines, or Planner plans.
+ */
+export async function updateUserProfileSettingsSafely(
+  db: PrismaClient,
+  userId: string,
+  input: UpdateProfileSettingsInput
+): Promise<UpdateProfileSettingsResult> {
+  // Serialize concurrent writes for the same actor within this process
+  const previousQueue = userSaveQueues.get(userId) || Promise.resolve();
+  let releaseQueue: () => void = () => {};
+  const queuePromise = new Promise<void>((resolve) => {
+    releaseQueue = resolve;
+  });
+  userSaveQueues.set(
+    userId,
+    previousQueue.then(() => queuePromise).catch(() => queuePromise)
+  );
+
+  await previousQueue.catch(() => {});
+
+  try {
+    return await db.$transaction(async (tx) => {
+      // Row-level lock in MySQL InnoDB for cross-process/multi-worker atomicity:
+      let currentPrefs: ProfilePreferencesJson = {};
+      try {
+        const rawTx = tx as unknown as {
+          $queryRaw?: (
+            strings: TemplateStringsArray,
+            ...values: unknown[]
+          ) => Promise<Array<{ preferences?: unknown }>>;
+        };
+        if (typeof rawTx.$queryRaw === "function") {
+          const rows = await rawTx.$queryRaw`SELECT preferences FROM profiles WHERE id = ${userId} FOR UPDATE`;
+          if (rows && rows.length > 0 && rows[0]?.preferences) {
+            const rawPref = rows[0].preferences;
+            currentPrefs =
+              typeof rawPref === "string"
+                ? JSON.parse(rawPref)
+                : (rawPref as ProfilePreferencesJson);
+          }
+        }
+      } catch {
+        // Non-MySQL or mock environments where raw queries are unsupported fall through safely
+      }
+
+      let existingProfile = null;
+      if (!currentPrefs || Object.keys(currentPrefs).length === 0) {
+        existingProfile = await tx.profile.findUnique({
+          where: { id: userId },
+          select: { preferences: true, fullName: true, avatarUrl: true },
+        });
+        currentPrefs =
+          (existingProfile?.preferences as unknown as ProfilePreferencesJson | null) || {};
+      } else {
+        existingProfile = await tx.profile.findUnique({
+          where: { id: userId },
+          select: { fullName: true, avatarUrl: true },
+        });
+      }
+
+      const currentVersion = currentPrefs._version ?? 1;
+      const nextVersion = currentVersion + 1;
+      const nowIso = new Date().toISOString();
+
+      const existingAppearance = currentPrefs.appearance || {};
+      const updatedAppearance = {
+        theme:
+          input.preferences?.appearance?.theme ??
+          existingAppearance.theme ??
+          (currentPrefs.theme as "light" | "dark" | undefined) ??
+          DEFAULT_PREFERENCES.appearance.theme,
+        compactMode:
+          input.preferences?.appearance?.compactMode ??
+          existingAppearance.compactMode ??
+          DEFAULT_PREFERENCES.appearance.compactMode,
+        reducedMotion:
+          input.preferences?.appearance?.reducedMotion ??
+          existingAppearance.reducedMotion ??
+          DEFAULT_PREFERENCES.appearance.reducedMotion,
+      };
+
+      const existingProductivity = currentPrefs.productivity || {};
+      const existingCalSettings = currentPrefs.calendar?.settings || {};
+      const updatedProductivity = {
+        defaultCalendarView:
+          input.preferences?.productivity?.defaultCalendarView ??
+          existingProductivity.defaultCalendarView ??
+          (existingCalSettings.defaultView as "month" | "week" | "day" | "agenda" | undefined) ??
+          DEFAULT_PREFERENCES.productivity.defaultCalendarView,
+        weekStartsOn:
+          input.preferences?.productivity?.weekStartsOn ??
+          existingProductivity.weekStartsOn ??
+          (existingCalSettings.weekStartsOn as 0 | 1 | undefined) ??
+          DEFAULT_PREFERENCES.productivity.weekStartsOn,
+        timeFormat:
+          input.preferences?.productivity?.timeFormat ??
+          existingProductivity.timeFormat ??
+          (existingCalSettings.timeFormat as "12h" | "24h" | undefined) ??
+          DEFAULT_PREFERENCES.productivity.timeFormat,
+        defaultTaskPriority:
+          input.preferences?.productivity?.defaultTaskPriority ??
+          existingProductivity.defaultTaskPriority ??
+          DEFAULT_PREFERENCES.productivity.defaultTaskPriority,
+        defaultTaskDueOffsetDays:
+          input.preferences?.productivity?.defaultTaskDueOffsetDays ??
+          existingProductivity.defaultTaskDueOffsetDays ??
+          DEFAULT_PREFERENCES.productivity.defaultTaskDueOffsetDays,
+        defaultDurationMinutes:
+          input.preferences?.productivity?.defaultDurationMinutes ??
+          existingProductivity.defaultDurationMinutes ??
+          existingCalSettings.defaultDurationMinutes ??
+          DEFAULT_PREFERENCES.productivity.defaultDurationMinutes,
+      };
+
+      const existingNotifSettings = currentPrefs.notifications?.settings || {};
+      const existingNotifPrefs = currentPrefs.notifications?.preferences || {};
+      const updatedNotifSettings = {
+        enabled:
+          input.preferences?.notifications?.enabled ??
+          existingNotifSettings.enabled ??
+          existingNotifPrefs.enabled ??
+          DEFAULT_PREFERENCES.notifications.enabled,
+        browserNotifications:
+          input.preferences?.notifications?.browserNotifications ??
+          existingNotifSettings.browserNotifications ??
+          existingNotifPrefs.browserNotificationsEnabled ??
+          DEFAULT_PREFERENCES.notifications.browserNotifications,
+        taskReminders:
+          input.preferences?.notifications?.taskReminders ??
+          existingNotifSettings.taskReminders ??
+          existingNotifPrefs.categories?.tasks ??
+          DEFAULT_PREFERENCES.notifications.taskReminders,
+        calendarReminders:
+          input.preferences?.notifications?.calendarReminders ??
+          existingNotifSettings.calendarReminders ??
+          existingNotifPrefs.categories?.calendar ??
+          DEFAULT_PREFERENCES.notifications.calendarReminders,
+        dailyDigest:
+          input.preferences?.notifications?.dailyDigest ??
+          existingNotifSettings.dailyDigest ??
+          existingNotifPrefs.dailySummaryEnabled ??
+          DEFAULT_PREFERENCES.notifications.dailyDigest,
+        quietHoursEnabled:
+          input.preferences?.notifications?.quietHoursEnabled ??
+          existingNotifSettings.quietHoursEnabled ??
+          existingNotifPrefs.quietHoursEnabled ??
+          DEFAULT_PREFERENCES.notifications.quietHoursEnabled,
+        quietHoursStart:
+          input.preferences?.notifications?.quietHoursStart ??
+          existingNotifSettings.quietHoursStart ??
+          existingNotifPrefs.quietHoursStart ??
+          DEFAULT_PREFERENCES.notifications.quietHoursStart,
+        quietHoursEnd:
+          input.preferences?.notifications?.quietHoursEnd ??
+          existingNotifSettings.quietHoursEnd ??
+          existingNotifPrefs.quietHoursEnd ??
+          DEFAULT_PREFERENCES.notifications.quietHoursEnd,
+      };
+
+      // Merge and PRESERVE all calendar, habits, routines, planner, tombstones!
+      const fullUpdatedPrefs: ProfilePreferencesJson = {
+        ...currentPrefs,
+        _version: nextVersion,
+        _updatedAt: nowIso,
+        theme:
+          updatedAppearance.theme === "system"
+            ? currentPrefs.theme
+            : (updatedAppearance.theme as "light" | "dark"),
+        appearance: updatedAppearance,
+        productivity: updatedProductivity,
+        calendar: {
+          ...(currentPrefs.calendar || {}),
+          settings: {
+            ...(currentPrefs.calendar?.settings || {}),
+            defaultView: updatedProductivity.defaultCalendarView,
+            weekStartsOn: updatedProductivity.weekStartsOn,
+            timeFormat: updatedProductivity.timeFormat,
+            defaultDurationMinutes: updatedProductivity.defaultDurationMinutes,
+          },
+        },
+        notifications: {
+          ...(currentPrefs.notifications || {}),
+          notifications: currentPrefs.notifications?.notifications || [],
+          preferences: {
+            ...(currentPrefs.notifications?.preferences || {}),
+            enabled: updatedNotifSettings.enabled,
+            browserNotificationsEnabled: updatedNotifSettings.browserNotifications,
+            quietHoursEnabled: updatedNotifSettings.quietHoursEnabled,
+            quietHoursStart: updatedNotifSettings.quietHoursStart,
+            quietHoursEnd: updatedNotifSettings.quietHoursEnd,
+            dailySummaryEnabled: updatedNotifSettings.dailyDigest,
+            categories: {
+              ...(currentPrefs.notifications?.preferences?.categories || {
+                tasks: true,
+                calendar: true,
+                time_blocks: true,
+                habits: true,
+                routines: true,
+                summary: true,
+              }),
+              tasks: updatedNotifSettings.taskReminders,
+              calendar: updatedNotifSettings.calendarReminders,
+            },
+          },
+          settings: updatedNotifSettings,
+        },
+      };
+
+      const updatedName = input.fullName !== undefined ? input.fullName : undefined;
+      const updatedAvatar =
+        input.avatarUrl !== undefined
+          ? input.avatarUrl === ""
+            ? null
+            : input.avatarUrl
+          : undefined;
+
+      if (updatedName !== undefined || updatedAvatar !== undefined) {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            ...(updatedName !== undefined ? { name: updatedName } : {}),
+            ...(updatedAvatar !== undefined ? { image: updatedAvatar } : {}),
+          },
+        });
+      }
+
+      const finalFullName =
+        updatedName !== undefined
+          ? updatedName
+          : existingProfile?.fullName || "MindDesk User";
+      const finalAvatarUrl =
+        updatedAvatar !== undefined
+          ? updatedAvatar
+          : existingProfile?.avatarUrl ?? null;
+
+      await tx.profile.update({
+        where: { id: userId },
+        data: {
+          ...(updatedName !== undefined ? { fullName: updatedName } : {}),
+          ...(updatedAvatar !== undefined ? { avatarUrl: updatedAvatar } : {}),
+          preferences: fullUpdatedPrefs as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      return {
+        success: true,
+        fullName: finalFullName,
+        avatarUrl: finalAvatarUrl,
+        preferences: {
+          appearance: updatedAppearance,
+          productivity: updatedProductivity,
+          notifications: updatedNotifSettings,
+        },
+        preferencesVersion: nextVersion,
+      };
+    }, { maxWait: 15000, timeout: 30000 });
+  } finally {
+    releaseQueue();
+    if (userSaveQueues.get(userId) === queuePromise) {
+      userSaveQueues.delete(userId);
+    }
+  }
+}
+

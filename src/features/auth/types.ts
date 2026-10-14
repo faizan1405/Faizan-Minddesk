@@ -64,6 +64,30 @@ export interface ProfilePreferencesJson {
   notifications?: {
     notifications?: NotificationRecord[];
     preferences?: NotificationPreferences | Partial<NotificationPreferences>;
+    settings?: {
+      enabled?: boolean;
+      browserNotifications?: boolean;
+      taskReminders?: boolean;
+      calendarReminders?: boolean;
+      dailyDigest?: boolean;
+      quietHoursEnabled?: boolean;
+      quietHoursStart?: string;
+      quietHoursEnd?: string;
+    };
   };
+  appearance?: {
+    theme?: "light" | "dark" | "system";
+    compactMode?: boolean;
+    reducedMotion?: boolean;
+  };
+  productivity?: {
+    defaultCalendarView?: "month" | "week" | "day" | "agenda";
+    weekStartsOn?: 0 | 1;
+    timeFormat?: "12h" | "24h";
+    defaultTaskPriority?: "low" | "medium" | "high";
+    defaultTaskDueOffsetDays?: number;
+    defaultDurationMinutes?: number;
+  };
+  [key: string]: unknown;
 }
 

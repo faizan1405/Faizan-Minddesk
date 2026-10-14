@@ -9,7 +9,6 @@ import {
   CalendarDays,
   Check,
   ChevronRight,
-  CircleHelp,
   Command,
   FileText,
   Focus,
@@ -48,6 +47,7 @@ import { NotificationCenterWorkspace } from "@/features/notifications/components
 import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import { MapsView, NotesView, ProjectsView } from "./library-views";
 import { TasksView } from "./tasks-view";
+import { SettingsView } from "@/features/settings";
 import { workspaceRoutes, workspaceTitles, type WorkspaceView } from "./workspace-types";
 import type { TaskItem } from "./types";
 
@@ -1034,84 +1034,7 @@ export function MindDeskAccountPage({ mode: initialMode }: { mode: "sign-in" | "
   );
 }
 
-export function SettingsView({
-  theme: themeProp,
-  onTheme: onThemeProp,
-  onProfile: onProfileProp,
-}: {
-  theme?: "light" | "dark";
-  onTheme?: () => void;
-  onProfile?: () => void;
-} = {}) {
-  const router = useRouter();
-  const { data, update } = useDeskData();
-  const activeTheme = themeProp ?? data.theme;
-
-  const handleTheme = () => {
-    if (onThemeProp) {
-      onThemeProp();
-      return;
-    }
-    update((current) => ({ ...current, theme: current.theme === "dark" ? "light" : "dark" }));
-  };
-
-  const handleProfile = () => {
-    if (onProfileProp) {
-      onProfileProp();
-      return;
-    }
-    router.push("/login");
-  };
-
-  return (
-    <section className="mx-auto w-full max-w-4xl px-5 pb-20 pt-7 sm:px-8 sm:pt-10">
-      <header className="mb-8">
-        <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
-          <Settings2 className="size-4" /> Make yourself at home
-        </div>
-        <h1 className="text-3xl font-semibold">Settings</h1>
-        <p className="mt-2 text-sm text-muted-foreground">A few ways to make this space yours.</p>
-      </header>
-      <div className="divide-y divide-border border-y border-border">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 py-5">
-          <div>
-            <h2 className="text-sm font-medium">Appearance</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Choose the look that feels right today.</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleTheme}>
-            {activeTheme === "dark" ? <Sun /> : <Moon />}
-            {activeTheme === "dark" ? "Light" : "Dark"}
-          </Button>
-        </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 py-5">
-          <div>
-            <h2 className="text-sm font-medium">Local storage</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Your demo changes stay in this browser. There is no cloud sync.
-            </p>
-          </div>
-          <span className="rounded-full bg-sage px-2.5 py-1 text-xs text-sage-ink">On this device</span>
-        </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 py-5">
-          <div>
-            <h2 className="text-sm font-medium">Profile</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Presentation-only account controls.</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleProfile}>
-            Faizan <ChevronRight />
-          </Button>
-        </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 py-5">
-          <div>
-            <h2 className="text-sm font-medium">Help & feedback</h2>
-            <p className="mt-1 text-xs text-muted-foreground">This preview keeps things simple and frontend-only.</p>
-          </div>
-          <CircleHelp className="size-4 text-muted-foreground" />
-        </div>
-      </div>
-    </section>
-  );
-}
+export { SettingsView } from "@/features/settings";
 
 function Clock3Icon() {
   return <CalendarDays className="size-4" />;

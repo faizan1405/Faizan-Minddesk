@@ -9,7 +9,8 @@ import {
 } from "../sync-repository";
 import type { DeskData, TaskItem } from "@/features/minddesk/types";
 
-function createInMemorySyncPrisma(): PrismaClient {
+export function createInMemorySyncPrisma(): PrismaClient {
+  const users = new Map<string, Record<string, unknown>>();
   const profiles = new Map<string, Record<string, unknown>>();
   const workspaces = new Map<string, Record<string, unknown>>();
   const workspaceMembers = new Map<string, Record<string, unknown>>();
@@ -163,6 +164,7 @@ function createInMemorySyncPrisma(): PrismaClient {
   });
 
   const mock = {
+    user: makeModel(users),
     profile: makeModel(profiles),
     workspace: makeModel(workspaces),
     workspaceMember: makeModel(workspaceMembers),
