@@ -91,11 +91,37 @@ describe("Notion-Style Hierarchy & Stable Overview", () => {
     window.localStorage.clear();
   });
 
-  it("calculates deterministic Project Overview IDs and identifies them correctly", () => {
+  it("calculates deterministic 36-char Project Overview IDs and identifies them correctly", () => {
     const overviewId = getProjectOverviewId("proj-123");
-    expect(overviewId).toBe("project-overview-proj-123");
-    expect(isProjectOverviewNote(overviewId)).toBe(true);
-    expect(isProjectOverviewNote("regular-note-id")).toBe(false);
+    // Strictly <= 36 characters to fit MariaDB VARCHAR(36)
+    expect(overviewId.length).toBe(36);
+    expect(overviewId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+
+    // 100% deterministic: same project resolves to identical ID
+    expect(getProjectOverviewId("proj-123")).toBe(overviewId);
+
+    // Unique: different projects produce different IDs
+    const otherOverviewId = getProjectOverviewId("proj-456");
+    expect(otherOverviewId.length).toBe(36);
+    expect(otherOverviewId).not.toBe(overviewId);
+
+    // Identification with project context
+    expect(isProjectOverviewNote(overviewId, "proj-123")).toBe(true);
+    expect(isProjectOverviewNote(overviewId, "proj-456")).toBe(false);
+
+    // Identification with NoteItem object
+    expect(
+      isProjectOverviewNote({
+        id: overviewId,
+        projectId: "proj-123",
+      } as NoteItem)
+    ).toBe(true);
+    expect(
+      isProjectOverviewNote({
+        id: "regular-note-id",
+        projectId: "proj-123",
+      } as NoteItem)
+    ).toBe(false);
   });
 
   it("calculates multi-level descendants across arbitrary depths", () => {

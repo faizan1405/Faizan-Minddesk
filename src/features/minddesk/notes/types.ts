@@ -136,12 +136,77 @@ export function getNoteAncestors(note: NoteItem, allNotes: NoteItem[]): NoteItem
   return ancestors;
 }
 
-export function getProjectOverviewId(projectId: string): string {
-  return `project-overview-${projectId}`;
+/**
+ * Deterministically derives an RFC4122-compliant 36-character UUIDv5-style identifier
+ * from a seed string. Always returns an exact 36-character UUID in the 8-4-4-4-12 hex format,
+ * perfectly fitting MariaDB's VARCHAR(36) column limit with ZERO risk of truncation.
+ */
+export function deterministicUuid(seed: string): string {
+  // 128-bit hash state using four 32-bit FNV-1a variations with distinct primes
+  let h1 = 0x811c9dc5;
+  let h2 = 0x811c9dc5 ^ 0x27d4eb2f;
+  let h3 = 0x811c9dc5 ^ 0x5a1f9cd1;
+  let h4 = 0x811c9dc5 ^ 0x3c6ef372;
+
+  for (let i = 0; i < seed.length; i++) {
+    const ch = seed.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 0x01000193);
+    h2 = Math.imul(h2 ^ (ch + i), 0x01000193);
+    h3 = Math.imul(h3 ^ ((ch << 1) + 1), 0x01000193);
+    h4 = Math.imul(h4 ^ (ch * 31 + 7), 0x01000193);
+  }
+
+  const toHex = (num: number) => (num >>> 0).toString(16).padStart(8, "0");
+  const hex = (toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4)).slice(0, 32);
+
+  const part1 = hex.slice(0, 8);
+  const part2 = hex.slice(8, 12);
+  const part3 = "5" + hex.slice(13, 16); // RFC4122 version 5 (deterministic)
+  const part4 = ((parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80).toString(16) + hex.slice(18, 20); // RFC4122 variant 1
+  const part5 = hex.slice(20, 32);
+
+  return `${part1}-${part2}-${part3}-${part4}-${part5}`.toLowerCase();
 }
 
-export function isProjectOverviewNote(noteId: string): boolean {
-  return typeof noteId === "string" && noteId.startsWith("project-overview-");
+/**
+ * Derives a stable, deterministic, 36-character Overview Note UUID for a project.
+ * Guarantees length <= 36 characters (strictly matches Note.id VARCHAR(36)).
+ */
+export function getProjectOverviewId(projectId: string): string {
+  return deterministicUuid(`minddesk:project-overview:${projectId}`);
+}
+
+/**
+ * Checks whether a note or note ID represents a Project Overview note.
+ * Can be verified by passing a NoteItem, or a noteId with a project or project list.
+ */
+export function isProjectOverviewNote(
+  noteOrId: NoteItem | string,
+  projectsOrProjectId?: ProjectItem[] | ProjectItem | string
+): boolean {
+  if (!noteOrId) return false;
+
+  // Case 1: Full NoteItem object
+  if (typeof noteOrId !== "string") {
+    if (!noteOrId.projectId) return false;
+    return noteOrId.id === getProjectOverviewId(noteOrId.projectId);
+  }
+
+  // Case 2: String noteId with explicit projectId or ProjectItem
+  if (typeof projectsOrProjectId === "string") {
+    return noteOrId === getProjectOverviewId(projectsOrProjectId);
+  }
+
+  if (projectsOrProjectId && typeof projectsOrProjectId === "object" && !Array.isArray(projectsOrProjectId)) {
+    return noteOrId === getProjectOverviewId(projectsOrProjectId.id);
+  }
+
+  // Case 3: String noteId with ProjectItem[] array
+  if (Array.isArray(projectsOrProjectId)) {
+    return projectsOrProjectId.some((p) => getProjectOverviewId(p.id) === noteOrId);
+  }
+
+  return false;
 }
 
 export function getAllDescendantIds(noteId: string, allNotes: NoteItem[]): string[] {

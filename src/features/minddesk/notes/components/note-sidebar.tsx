@@ -107,8 +107,8 @@ export function NoteSidebar({
 
   // Standard notes (excluding dedicated project overview records from general trees)
   const standardNotes = useMemo(() => {
-    return notes.filter((n) => !isProjectOverviewNote(n.id));
-  }, [notes]);
+    return notes.filter((n) => !isProjectOverviewNote(n, projects));
+  }, [notes, projects]);
 
   // Filtered notes for search mode
   const searchResults = useMemo(() => {
