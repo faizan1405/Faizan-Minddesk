@@ -17,6 +17,7 @@ import {
   Image as ImageIcon,
   Crosshair,
   X,
+  Sparkles,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -34,6 +35,7 @@ export interface MindMapToolbarProps {
   currentMatchIndex: number;
   onThemeChange: (theme: MindMapTheme) => void;
   onLayoutChange: (layout: MindMapLayout) => void;
+  onAutoArrange: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onSearchChange: (query: string) => void;
@@ -60,6 +62,7 @@ export function MindMapToolbar({
   currentMatchIndex,
   onThemeChange,
   onLayoutChange,
+  onAutoArrange,
   onUndo,
   onRedo,
   onSearchChange,
@@ -130,6 +133,22 @@ export function MindMapToolbar({
 
       <div className="h-4 w-px bg-border/60 mx-0.5" />
 
+      {/* 2b. Auto Arrange Dedicated Button */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        data-testid="auto-arrange-button"
+        className="h-8 gap-1.5 text-xs px-2.5 rounded-lg font-medium text-foreground hover:bg-black/5 dark:hover:bg-white/10"
+        title="Auto Arrange Mind Map (reorganize nodes into structured hierarchy)"
+        onClick={onAutoArrange}
+      >
+        <Sparkles className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+        <span className="hidden sm:inline font-medium">Auto Arrange</span>
+      </Button>
+
+      <div className="h-4 w-px bg-border/60 mx-0.5" />
+
       {/* 3. Layout Selector Dropdown */}
       <div className="relative">
         <Button
@@ -138,6 +157,7 @@ export function MindMapToolbar({
           size="sm"
           data-testid="layout-menu-trigger"
           className="h-8 gap-1.5 text-xs px-2 rounded-lg"
+          title="Select arrangement style"
           onClick={() => setActiveMenu(activeMenu === "layout" ? null : "layout")}
         >
           <LayoutGrid className="h-3.5 w-3.5" />
@@ -148,11 +168,11 @@ export function MindMapToolbar({
 
         {activeMenu === "layout" && (
           <div
-            className="absolute top-10 left-0 z-50 flex flex-col gap-1 p-1.5 rounded-xl border shadow-xl bg-card min-w-[170px]"
+            className="absolute top-10 left-0 z-50 flex flex-col gap-1 p-1.5 rounded-xl border shadow-xl bg-card min-w-[180px]"
             style={{ borderColor: themeConfig.toolbarBorder }}
           >
             <div className="text-[10px] font-semibold uppercase text-muted-foreground px-2 py-1">
-              Layout Engine
+              Arrangement Style
             </div>
             {(
               [

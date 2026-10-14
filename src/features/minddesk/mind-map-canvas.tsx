@@ -38,6 +38,9 @@ import type {
 } from "./types";
 import {
   applyLayout,
+  calculateNonDisruptiveNodePosition,
+  checkNodeOverlap,
+  estimateNodeDimensions,
   findRootNode,
   generateEdgeId,
   generateNodeId,
@@ -273,14 +276,19 @@ export function MindMapCanvas({
       const parentNode = nodes.find((n) => n.id === targetParentId);
       if (!parentNode) return;
 
+      const calculatedPos = calculateNonDisruptiveNodePosition({
+        type: "child",
+        targetNodeId: targetParentId,
+        nodes,
+        edges,
+        layout: currentLayout,
+      });
+
       const newNode: MindFlowNode = {
         id: nextId,
         type: "mind",
         selected: true,
-        position: {
-          x: (parentNode?.position.x ?? 0) + 240,
-          y: (parentNode?.position.y ?? 0) + 50,
-        },
+        position: calculatedPos,
         data: {
           label: "New topic",
           color: parentNode?.data.color || "blue",
@@ -299,12 +307,8 @@ export function MindMapCanvas({
       };
 
       const unselectedNodes = nodes.map((n) => ({ ...n, selected: false }));
-      let nextNodes = [...unselectedNodes, newNode];
+      const nextNodes = [...unselectedNodes, newNode];
       const nextEdges = [...edges, newEdge];
-
-      if (currentLayout !== "freeform") {
-        nextNodes = applyLayoutToGraph(currentLayout, nextNodes, nextEdges);
-      }
 
       setNodes(nextNodes);
       setEdges(nextEdges);
@@ -313,10 +317,6 @@ export function MindMapCanvas({
 
       pushHistory(nextNodes, nextEdges);
       triggerSave(nextNodes, nextEdges);
-
-      setTimeout(() => {
-        reactFlowInstance?.fitView({ duration: 300, maxZoom: 1.2 });
-      }, 50);
     },
     [
       selectedNodeId,
@@ -325,10 +325,8 @@ export function MindMapCanvas({
       currentTheme,
       themeConfig.edgeStroke,
       currentLayout,
-      applyLayoutToGraph,
       pushHistory,
       triggerSave,
-      reactFlowInstance,
     ]
   );
 
@@ -344,7 +342,7 @@ export function MindMapCanvas({
         return;
       }
 
-      const parentEdge = edges.find((e) => e.target === targetSiblingId);
+      const parentEdge = edges.find((e) => e.target === targetSiblingId && e.label !== "relates to");
       const parentId = parentEdge?.source;
 
       if (!parentId) {
@@ -357,14 +355,19 @@ export function MindMapCanvas({
       const nextEdgeId = generateEdgeId();
       const siblingNode = nodes.find((n) => n.id === targetSiblingId);
 
+      const calculatedPos = calculateNonDisruptiveNodePosition({
+        type: "sibling",
+        targetNodeId: targetSiblingId,
+        nodes,
+        edges,
+        layout: currentLayout,
+      });
+
       const newNode: MindFlowNode = {
         id: nextId,
         type: "mind",
         selected: true,
-        position: {
-          x: (siblingNode?.position.x ?? 0) + 20,
-          y: (siblingNode?.position.y ?? 0) + 60,
-        },
+        position: calculatedPos,
         data: {
           label: "New topic",
           color: siblingNode?.data.color || "mint",
@@ -383,12 +386,8 @@ export function MindMapCanvas({
       };
 
       const unselectedNodes = nodes.map((n) => ({ ...n, selected: false }));
-      let nextNodes = [...unselectedNodes, newNode];
+      const nextNodes = [...unselectedNodes, newNode];
       const nextEdges = [...edges, newEdge];
-
-      if (currentLayout !== "freeform") {
-        nextNodes = applyLayoutToGraph(currentLayout, nextNodes, nextEdges);
-      }
 
       setNodes(nextNodes);
       setEdges(nextEdges);
@@ -406,7 +405,6 @@ export function MindMapCanvas({
       currentTheme,
       themeConfig.edgeStroke,
       currentLayout,
-      applyLayoutToGraph,
       pushHistory,
       triggerSave,
     ]
@@ -473,12 +471,31 @@ export function MindMapCanvas({
       const nextId = generateNodeId();
       const parentId = getParentId(nodeId, edges.map((e) => ({ id: e.id, source: e.source, target: e.target })));
 
+      const dim = estimateNodeDimensions(source);
+      const candX = source.position.x + 30;
+      let candY = source.position.y + 60;
+      let step = 1;
+      const testCol = (x: number, y: number) =>
+        nodes.some((n) =>
+          checkNodeOverlap(
+            { x, y, width: dim.width, height: dim.height },
+            { x: n.position.x, y: n.position.y, width: dim.width, height: dim.height },
+            16,
+            12
+          )
+        );
+      while (testCol(candX, candY) && step <= 50) {
+        candY += 40;
+        step++;
+      }
+
       const duplicate: MindFlowNode = {
         id: nextId,
         type: "mind",
+        selected: true,
         position: {
-          x: source.position.x + 30,
-          y: source.position.y + 60,
+          x: candX,
+          y: candY,
         },
         data: {
           ...source.data,
@@ -487,7 +504,8 @@ export function MindMapCanvas({
         },
       };
 
-      let nextNodes = [...nodes, duplicate];
+      const unselected = nodes.map((n) => ({ ...n, selected: false }));
+      const nextNodes = [...unselected, duplicate];
       const nextEdges = [...edges];
 
       if (parentId) {
@@ -500,10 +518,6 @@ export function MindMapCanvas({
         });
       }
 
-      if (currentLayout !== "freeform") {
-        nextNodes = applyLayoutToGraph(currentLayout, nextNodes, nextEdges);
-      }
-
       setNodes(nextNodes);
       setEdges(nextEdges);
       setSelectedNodeId(nextId);
@@ -511,7 +525,7 @@ export function MindMapCanvas({
       pushHistory(nextNodes, nextEdges);
       triggerSave(nextNodes, nextEdges);
     },
-    [nodes, edges, themeConfig.edgeStroke, currentLayout, applyLayoutToGraph, pushHistory, triggerSave]
+    [nodes, edges, themeConfig.edgeStroke, pushHistory, triggerSave]
   );
 
   const deleteNodeSafely = useCallback(
@@ -527,23 +541,18 @@ export function MindMapCanvas({
       if (childIds.length > 0) {
         setDeleteConfirmNodeId(nodeId);
       } else {
-        // Delete leaf directly
+        // Delete leaf directly without rearranging existing nodes
         const nextNodes = nodes.filter((n) => n.id !== nodeId);
         const nextEdges = edges.filter((e) => e.source !== nodeId && e.target !== nodeId);
 
-        let laidOut = nextNodes;
-        if (currentLayout !== "freeform") {
-          laidOut = applyLayoutToGraph(currentLayout, nextNodes, nextEdges);
-        }
-
-        setNodes(laidOut);
+        setNodes(nextNodes);
         setEdges(nextEdges);
         setSelectedNodeId(null);
-        pushHistory(laidOut, nextEdges);
-        triggerSave(laidOut, nextEdges);
+        pushHistory(nextNodes, nextEdges);
+        triggerSave(nextNodes, nextEdges);
       }
     },
-    [nodes, edges, currentLayout, applyLayoutToGraph, pushHistory, triggerSave]
+    [nodes, edges, pushHistory, triggerSave]
   );
 
   const deleteEntireBranch = useCallback(
@@ -558,18 +567,13 @@ export function MindMapCanvas({
         (e) => !subtreeIds.has(e.source) && !subtreeIds.has(e.target)
       );
 
-      let laidOut = nextNodes;
-      if (currentLayout !== "freeform") {
-        laidOut = applyLayoutToGraph(currentLayout, nextNodes, nextEdges);
-      }
-
-      setNodes(laidOut);
+      setNodes(nextNodes);
       setEdges(nextEdges);
       setSelectedNodeId(null);
-      pushHistory(laidOut, nextEdges);
-      triggerSave(laidOut, nextEdges);
+      pushHistory(nextNodes, nextEdges);
+      triggerSave(nextNodes, nextEdges);
     },
-    [nodes, edges, currentLayout, applyLayoutToGraph, pushHistory, triggerSave]
+    [nodes, edges, pushHistory, triggerSave]
   );
 
   const deleteNodeKeepChildren = useCallback(
@@ -594,18 +598,13 @@ export function MindMapCanvas({
         }
       }
 
-      let laidOut = nextNodes;
-      if (currentLayout !== "freeform") {
-        laidOut = applyLayoutToGraph(currentLayout, nextNodes, nextEdges);
-      }
-
-      setNodes(laidOut);
+      setNodes(nextNodes);
       setEdges(nextEdges);
       setSelectedNodeId(null);
-      pushHistory(laidOut, nextEdges);
-      triggerSave(laidOut, nextEdges);
+      pushHistory(nextNodes, nextEdges);
+      triggerSave(nextNodes, nextEdges);
     },
-    [nodes, edges, themeConfig.edgeStroke, currentLayout, applyLayoutToGraph, pushHistory, triggerSave]
+    [nodes, edges, themeConfig.edgeStroke, pushHistory, triggerSave]
   );
 
   const changeNodeColor = useCallback(
@@ -676,21 +675,29 @@ export function MindMapCanvas({
     isHistoryActionRef.current = false;
   }, [history, historyIndex, triggerSave]);
 
-  // Layout switcher
+  // Layout style preference switcher (sets preferred style without rearranging existing nodes)
   const handleLayoutChange = useCallback(
     (newLayout: MindMapLayout) => {
       setCurrentLayout(newLayout);
       onLayoutChange?.(newLayout);
-      const laidOut = applyLayoutToGraph(newLayout, nodes, edges);
+    },
+    [onLayoutChange]
+  );
+
+  // Dedicated Auto Arrange Runner (explicitly organizes entire mind map into clean hierarchy)
+  const handleAutoArrange = useCallback(
+    (explicitLayout?: MindMapLayout) => {
+      const layoutToUse = explicitLayout || (currentLayout === "freeform" ? "balanced" : currentLayout);
+      const laidOut = applyLayoutToGraph(layoutToUse, nodes, edges);
       setNodes(laidOut);
       pushHistory(laidOut, edges);
       triggerSave(laidOut, edges);
 
       setTimeout(() => {
-        reactFlowInstance?.fitView({ duration: 400 });
+        reactFlowInstance?.fitView({ duration: 400, padding: 0.2 });
       }, 50);
     },
-    [applyLayoutToGraph, edges, nodes, onLayoutChange, pushHistory, reactFlowInstance, triggerSave]
+    [applyLayoutToGraph, currentLayout, edges, nodes, pushHistory, reactFlowInstance, triggerSave]
   );
 
   // Theme switcher
@@ -1186,6 +1193,7 @@ export function MindMapCanvas({
         currentMatchIndex={currentMatchIndex}
         onThemeChange={handleThemeChange}
         onLayoutChange={handleLayoutChange}
+        onAutoArrange={() => handleAutoArrange()}
         onUndo={handleUndo}
         onRedo={handleRedo}
         onSearchChange={setSearchQuery}

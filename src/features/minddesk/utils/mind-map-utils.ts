@@ -292,18 +292,253 @@ export function willCreateCycle(
 // 3. Real Automatic Layout Algorithms (Balanced, Horizontal, Vertical, Radial)
 // ============================================================================
 
-const DEFAULT_NODE_WIDTH = 180;
-const DEFAULT_NODE_HEIGHT = 50;
-const HORIZONTAL_GAP = 70;
-const VERTICAL_GAP = 28;
+export const DEFAULT_NODE_WIDTH = 180;
+export const DEFAULT_NODE_HEIGHT = 50;
+export const HORIZONTAL_GAP = 70;
+export const VERTICAL_GAP = 28;
 
-function estimateNodeDimensions(node: MapNodeItem): { width: number; height: number } {
-  const label = node.data?.label || "";
+export function estimateNodeDimensions(node: { data?: { label?: string } }): { width: number; height: number } {
+  const label = node?.data?.label || "";
   const lines = label.split("\n");
   const maxLineLength = Math.max(...lines.map((l) => l.length), 8);
   const width = Math.min(Math.max(maxLineLength * 9.5 + 44, DEFAULT_NODE_WIDTH), 320);
   const height = Math.max(lines.length * 22 + 28, DEFAULT_NODE_HEIGHT);
   return { width, height };
+}
+
+export function checkNodeOverlap(
+  rect1: { x: number; y: number; width: number; height: number },
+  rect2: { x: number; y: number; width: number; height: number },
+  paddingX = 16,
+  paddingY = 12
+): boolean {
+  return (
+    rect1.x - paddingX < rect2.x + rect2.width &&
+    rect1.x + rect1.width + paddingX > rect2.x &&
+    rect1.y - paddingY < rect2.y + rect2.height &&
+    rect1.y + rect1.height + paddingY > rect2.y
+  );
+}
+
+export interface NonDisruptivePlacementParams {
+  type: "child" | "sibling";
+  targetNodeId: string;
+  nodes: { id: string; position: { x: number; y: number }; data?: Record<string, unknown> }[];
+  edges: { id?: string; source: string; target: string; label?: unknown }[];
+  layout?: MindMapLayout;
+  newNodeDimensions?: { width: number; height: number };
+}
+
+/**
+ * Intelligent, collision-aware placement for NEW nodes that strictly preserves
+ * the exact (x, y) coordinates of all existing nodes on the canvas.
+ */
+export function calculateNonDisruptiveNodePosition({
+  type,
+  targetNodeId,
+  nodes,
+  edges,
+  layout = "balanced",
+  newNodeDimensions,
+}: NonDisruptivePlacementParams): { x: number; y: number } {
+  if (nodes.length === 0) return { x: 0, y: 0 };
+
+  const treeEdges = edges.filter((e) => e.label !== "relates to");
+  const targetNode = nodes.find((n) => n.id === targetNodeId) || nodes[0];
+  const rootNode = findRootNode(nodes, treeEdges);
+
+  const newW = newNodeDimensions?.width ?? DEFAULT_NODE_WIDTH;
+  const newH = newNodeDimensions?.height ?? DEFAULT_NODE_HEIGHT;
+
+  let parentNode = targetNode;
+  let refSiblingNode: typeof targetNode | null = null;
+
+  if (type === "sibling") {
+    if (targetNode.id === rootNode?.id) {
+      parentNode = targetNode;
+      refSiblingNode = null;
+    } else {
+      const parentEdge = treeEdges.find((e) => e.target === targetNode.id);
+      const resolvedParent = nodes.find((n) => n.id === parentEdge?.source);
+      if (resolvedParent) {
+        parentNode = resolvedParent;
+        refSiblingNode = targetNode;
+      } else {
+        parentNode = targetNode;
+        refSiblingNode = null;
+      }
+    }
+  }
+
+  // Determine branch direction: "right" | "left" | "down"
+  const isParentRoot = parentNode.id === rootNode?.id;
+  let direction: "right" | "left" | "down" = "right";
+
+  if (layout === "vertical") {
+    direction = "down";
+  } else if (layout === "horizontal" || layout === "tree") {
+    direction = "right";
+  } else {
+    // Balanced or Freeform
+    if (isParentRoot) {
+      if (refSiblingNode) {
+        direction = refSiblingNode.position.x < (rootNode?.position.x ?? 0) ? "left" : "right";
+      } else {
+        const rootChildren = treeEdges
+          .filter((e) => e.source === rootNode?.id)
+          .map((e) => nodes.find((n) => n.id === e.target))
+          .filter(Boolean);
+        const rightCount = rootChildren.filter(
+          (c) => (c?.position.x ?? 0) >= (rootNode?.position.x ?? 0)
+        ).length;
+        const leftCount = rootChildren.filter(
+          (c) => (c?.position.x ?? 0) < (rootNode?.position.x ?? 0)
+        ).length;
+        direction = rightCount <= leftCount ? "right" : "left";
+      }
+    } else {
+      direction = parentNode.position.x < (rootNode?.position.x ?? 0) ? "left" : "right";
+    }
+  }
+
+  const pDim = estimateNodeDimensions(parentNode);
+  const GAP_X = 64;
+  const GAP_Y = 24;
+
+  let candX = 0;
+  let candY = 0;
+
+  if (direction === "down") {
+    // Vertical layout: depth along Y, siblings along X
+    const existingChildren = treeEdges
+      .filter((e) => e.source === parentNode.id)
+      .map((e) => nodes.find((n) => n.id === e.target))
+      .filter(Boolean) as typeof nodes;
+
+    if (refSiblingNode) {
+      candY = refSiblingNode.position.y;
+      let maxX = refSiblingNode.position.x + estimateNodeDimensions(refSiblingNode).width;
+      const subtreeIds = getSubtreeNodeIds(refSiblingNode.id, treeEdges);
+      for (const sId of subtreeIds) {
+        const sNode = nodes.find((n) => n.id === sId);
+        if (sNode) {
+          const right = sNode.position.x + estimateNodeDimensions(sNode).width;
+          if (right > maxX) maxX = right;
+        }
+      }
+      candX = maxX + GAP_X;
+    } else {
+      candY = parentNode.position.y + pDim.height + 70;
+      if (existingChildren.length === 0) {
+        candX = parentNode.position.x;
+      } else {
+        let maxX = parentNode.position.x;
+        for (const child of existingChildren) {
+          const subtreeIds = getSubtreeNodeIds(child.id, treeEdges);
+          for (const sId of subtreeIds) {
+            const sNode = nodes.find((n) => n.id === sId);
+            if (sNode) {
+              const right = sNode.position.x + estimateNodeDimensions(sNode).width;
+              if (right > maxX) maxX = right;
+            }
+          }
+        }
+        candX = maxX + GAP_X;
+      }
+    }
+  } else {
+    // Direction is "right" or "left": depth along X, siblings along Y
+    const existingChildren = treeEdges
+      .filter((e) => e.source === parentNode.id)
+      .map((e) => nodes.find((n) => n.id === e.target))
+      .filter(Boolean) as typeof nodes;
+
+    if (direction === "right") {
+      if (refSiblingNode) {
+        candX = refSiblingNode.position.x;
+      } else if (existingChildren.length > 0) {
+        candX = existingChildren[0].position.x;
+      } else {
+        candX = parentNode.position.x + pDim.width + GAP_X;
+      }
+    } else {
+      // Direction is "left"
+      if (refSiblingNode) {
+        candX = refSiblingNode.position.x;
+      } else if (existingChildren.length > 0) {
+        candX = existingChildren[0].position.x;
+      } else {
+        candX = parentNode.position.x - newW - GAP_X;
+      }
+    }
+
+    if (refSiblingNode) {
+      let lowestY = refSiblingNode.position.y + estimateNodeDimensions(refSiblingNode).height;
+      const subtreeIds = getSubtreeNodeIds(refSiblingNode.id, treeEdges);
+      for (const sId of subtreeIds) {
+        const sNode = nodes.find((n) => n.id === sId);
+        if (sNode) {
+          const bottom = sNode.position.y + estimateNodeDimensions(sNode).height;
+          if (bottom > lowestY) lowestY = bottom;
+        }
+      }
+      candY = lowestY + GAP_Y;
+    } else {
+      if (existingChildren.length === 0) {
+        candY = parentNode.position.y;
+      } else {
+        let lowestY = parentNode.position.y;
+        for (const child of existingChildren) {
+          const subtreeIds = getSubtreeNodeIds(child.id, treeEdges);
+          for (const sId of subtreeIds) {
+            const sNode = nodes.find((n) => n.id === sId);
+            if (sNode) {
+              const bottom = sNode.position.y + estimateNodeDimensions(sNode).height;
+              if (bottom > lowestY) lowestY = bottom;
+            }
+          }
+        }
+        candY = lowestY + GAP_Y;
+      }
+    }
+  }
+
+  // Collision detection & resolution against all existing nodes
+  const testCandidate = (x: number, y: number) => {
+    const rect = { x, y, width: newW, height: newH };
+    return nodes.some((n) => {
+      const dim = estimateNodeDimensions(n);
+      return checkNodeOverlap(
+        rect,
+        { x: n.position.x, y: n.position.y, width: dim.width, height: dim.height },
+        18,
+        14
+      );
+    });
+  };
+
+  if (!testCandidate(candX, candY)) {
+    return { x: candX, y: candY };
+  }
+
+  // Collides: step along sibling axis to find the nearest clear position
+  if (direction === "down") {
+    let resolvedX = candX;
+    let step = 1;
+    while (testCandidate(resolvedX, candY) && step <= 100) {
+      resolvedX = candX + step * (newW + 30);
+      step++;
+    }
+    return { x: resolvedX, y: candY };
+  } else {
+    let resolvedY = candY;
+    let step = 1;
+    while (testCandidate(candX, resolvedY) && step <= 100) {
+      resolvedY = candY + step * (newH + GAP_Y);
+      step++;
+    }
+    return { x: candX, y: resolvedY };
+  }
 }
 
 function buildHierarchyTree(
@@ -361,13 +596,14 @@ export function layoutBalancedMindMap(
   edges: MapEdgeItem[]
 ): MapNodeItem[] {
   if (nodes.length <= 1) return nodes;
-  const root = findRootNode(nodes, edges);
+  const treeEdges = edges.filter((e) => e.label !== "relates to");
+  const root = findRootNode(nodes, treeEdges);
   if (!root) return nodes;
 
   const nodeMap = new Map<string, MapNodeItem>();
   nodes.forEach((n) => nodeMap.set(n.id, n));
 
-  const topLevelChildrenIds = edges.filter((e) => e.source === root.id).map((e) => e.target);
+  const topLevelChildrenIds = treeEdges.filter((e) => e.source === root.id).map((e) => e.target);
   const rightChildIds: string[] = [];
   const leftChildIds: string[] = [];
 
@@ -393,7 +629,7 @@ export function layoutBalancedMindMap(
     const subtrees: TreeNode[] = [];
 
     for (const id of childIds) {
-      const tree = buildHierarchyTree(id, nodeMap, edges, 1, visited);
+      const tree = buildHierarchyTree(id, nodeMap, treeEdges, 1, visited);
       if (tree) subtrees.push(tree);
     }
 
@@ -451,13 +687,14 @@ export function layoutHorizontalTree(
   edges: MapEdgeItem[]
 ): MapNodeItem[] {
   if (nodes.length <= 1) return nodes;
-  const root = findRootNode(nodes, edges);
+  const treeEdges = edges.filter((e) => e.label !== "relates to");
+  const root = findRootNode(nodes, treeEdges);
   if (!root) return nodes;
 
   const nodeMap = new Map<string, MapNodeItem>();
   nodes.forEach((n) => nodeMap.set(n.id, n));
 
-  const rootTree = buildHierarchyTree(root.id, nodeMap, edges, 0);
+  const rootTree = buildHierarchyTree(root.id, nodeMap, treeEdges, 0);
   if (!rootTree) return nodes;
 
   const positions = new Map<string, { x: number; y: number }>();
@@ -497,13 +734,14 @@ export function layoutVerticalTree(
   edges: MapEdgeItem[]
 ): MapNodeItem[] {
   if (nodes.length <= 1) return nodes;
-  const root = findRootNode(nodes, edges);
+  const treeEdges = edges.filter((e) => e.label !== "relates to");
+  const root = findRootNode(nodes, treeEdges);
   if (!root) return nodes;
 
   const nodeMap = new Map<string, MapNodeItem>();
   nodes.forEach((n) => nodeMap.set(n.id, n));
 
-  const rootTree = buildHierarchyTree(root.id, nodeMap, edges, 0);
+  const rootTree = buildHierarchyTree(root.id, nodeMap, treeEdges, 0);
   if (!rootTree) return nodes;
 
   // In vertical tree, compute subtree widths
@@ -559,7 +797,8 @@ export function layoutRadialMap(
   edges: MapEdgeItem[]
 ): MapNodeItem[] {
   if (nodes.length <= 1) return nodes;
-  const root = findRootNode(nodes, edges);
+  const treeEdges = edges.filter((e) => e.label !== "relates to");
+  const root = findRootNode(nodes, treeEdges);
   if (!root) return nodes;
 
   const nodeMap = new Map<string, MapNodeItem>();
@@ -570,12 +809,12 @@ export function layoutRadialMap(
 
   function countLeaves(nodeId: string, visited = new Set<string>()): number {
     visited.add(nodeId);
-    const childIds = edges.filter((e) => e.source === nodeId && !visited.has(e.target)).map((e) => e.target);
+    const childIds = treeEdges.filter((e) => e.source === nodeId && !visited.has(e.target)).map((e) => e.target);
     if (childIds.length === 0) return 1;
     return childIds.reduce((sum, c) => sum + countLeaves(c, visited), 0);
   }
 
-  const topLevelChildren = edges.filter((e) => e.source === root!.id).map((e) => e.target);
+  const topLevelChildren = treeEdges.filter((e) => e.source === root!.id).map((e) => e.target);
   if (topLevelChildren.length === 0) return nodes;
 
   const totalLeaves = topLevelChildren.reduce((sum, id) => sum + countLeaves(id), 0);
@@ -596,7 +835,7 @@ export function layoutRadialMap(
     const dim = estimateNodeDimensions(nodeMap.get(nodeId)!);
     positions.set(nodeId, { x: x - dim.width / 2, y: y - dim.height / 2 });
 
-    const children = edges.filter((e) => e.source === nodeId && !visited.has(e.target)).map((e) => e.target);
+    const children = treeEdges.filter((e) => e.source === nodeId && !visited.has(e.target)).map((e) => e.target);
     if (children.length === 0) return;
 
     const childLeaves = children.map((c) => countLeaves(c));

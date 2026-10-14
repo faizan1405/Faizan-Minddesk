@@ -20,6 +20,7 @@ describe("MindMapToolbar Component", () => {
     const onUndo = vi.fn();
     const onRedo = vi.fn();
     const onAddTopic = vi.fn();
+    const onAutoArrange = vi.fn();
 
     render(
       <MindMapToolbar
@@ -32,6 +33,7 @@ describe("MindMapToolbar Component", () => {
         currentMatchIndex={0}
         onLayoutChange={onLayoutChange}
         onThemeChange={onThemeChange}
+        onAutoArrange={onAutoArrange}
         onUndo={onUndo}
         onRedo={onRedo}
         onAddTopic={onAddTopic}
@@ -54,6 +56,12 @@ describe("MindMapToolbar Component", () => {
     expect(addTopicBtn).toBeInTheDocument();
     fireEvent.click(addTopicBtn);
     expect(onAddTopic).toHaveBeenCalledTimes(1);
+
+    // Dedicated Auto Arrange button
+    const autoArrangeBtn = screen.getByTestId("auto-arrange-button");
+    expect(autoArrangeBtn).toBeInTheDocument();
+    fireEvent.click(autoArrangeBtn);
+    expect(onAutoArrange).toHaveBeenCalledTimes(1);
 
     // Undo button should be enabled, Redo disabled
     const undoBtn = screen.getByTitle(/Undo/i);
@@ -80,6 +88,7 @@ describe("MindMapToolbar Component", () => {
         currentMatchIndex={0}
         onLayoutChange={vi.fn()}
         onThemeChange={vi.fn()}
+        onAutoArrange={vi.fn()}
         onUndo={vi.fn()}
         onRedo={vi.fn()}
         onAddTopic={vi.fn()}
