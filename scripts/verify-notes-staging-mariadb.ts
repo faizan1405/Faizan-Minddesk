@@ -515,6 +515,15 @@ async function main() {
       throw new Error("Child note was corrupted or not reparented");
     }
 
+    // Clean up temporary Step 8 test note childOfDepsId
+    await saveWorkspaceDeskData(
+      prisma,
+      actor,
+      testWsId,
+      {},
+      { deletedNoteIds: [childOfDepsId] }
+    );
+
     results.push({
       step: "8. Complex Dependency Deletion (InnoDB FK Safety)",
       passed: true,
@@ -555,7 +564,8 @@ async function main() {
     }
 
     // B. Delete Entire Subtree: Deleting pageTopId and all its remaining descendants
-    const allRemainingDescendants = getAllDescendantIds(pageTopId, [fetchedTop!, dbGrand as unknown as NoteItem]);
+    const deskBeforeSubtree = await getWorkspaceDeskData(prisma, actor, testWsId);
+    const allRemainingDescendants = getAllDescendantIds(pageTopId, deskBeforeSubtree.notes);
     const subtreeIdsToDelete = [pageTopId, ...allRemainingDescendants];
 
     await saveWorkspaceDeskData(

@@ -217,7 +217,10 @@ export function getAllDescendantIds(noteId: string, allNotes: NoteItem[]): strin
   while (queue.length > 0) {
     const currentId = queue.shift()!;
     for (const note of allNotes) {
-      if (note.parentId === currentId && !visited.has(note.id)) {
+      const parentId =
+        note.parentId ??
+        ((note as unknown as { parentNoteId?: string | null }).parentNoteId ?? null);
+      if (parentId === currentId && !visited.has(note.id)) {
         visited.add(note.id);
         descendants.push(note.id);
         queue.push(note.id);
@@ -240,9 +243,12 @@ export function isDescendantOf(
   while (currentId && !visited.has(currentId)) {
     visited.add(currentId);
     const item = allNotes.find((n) => n.id === currentId);
-    if (!item?.parentId) return false;
-    if (item.parentId === potentialAncestorId) return true;
-    currentId = item.parentId;
+    const parentId =
+      item?.parentId ??
+      ((item as unknown as { parentNoteId?: string | null })?.parentNoteId ?? null);
+    if (!parentId) return false;
+    if (parentId === potentialAncestorId) return true;
+    currentId = parentId;
   }
 
   return false;
