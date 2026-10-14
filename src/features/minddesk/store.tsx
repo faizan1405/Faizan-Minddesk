@@ -13,6 +13,7 @@ import { useTheme } from "next-themes";
 
 import { initialDeskData, initialTaskLists } from "./seed";
 import type { DeskData, TaskItem, TaskList } from "./types";
+import { sanitizeMapIdentifiers } from "./utils/mind-map-utils";
 import { useUIStore } from "@/stores/ui-store";
 import type { AuthUserSummary } from "@/types/domain";
 
@@ -199,8 +200,15 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
           );
         } else {
           useUIStore.getState().setSaveStatus("error");
+          isUserDirtyRef.current = true;
         }
-      } catch {
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error("[MindDesk Save Failed]", errorMsg);
+
+        // Keep dirty flag so user edits are preserved and can be retried
+        isUserDirtyRef.current = true;
+
         useUIStore.getState().setSaveStatus(
           typeof navigator !== "undefined" && !navigator.onLine
             ? "offline"
@@ -599,7 +607,9 @@ export function migrateDeskData(candidate: DeskData): DeskData {
     taskLists: lists,
     tasks: migratedTasks,
     notes: Array.isArray(candidate.notes) ? candidate.notes : [],
-    maps: Array.isArray(candidate.maps) ? candidate.maps : [],
+    maps: Array.isArray(candidate.maps)
+      ? candidate.maps.map(sanitizeMapIdentifiers)
+      : [],
     projects: Array.isArray(candidate.projects) ? candidate.projects : [],
     events: candidate.events || [],
     categories: candidate.categories || initialDeskData.categories,

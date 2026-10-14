@@ -36,6 +36,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { useUIStore } from "@/stores/ui-store";
 import { MindDeskProvider, useDeskData } from "./store";
+import { createDefaultMindMap } from "./utils/mind-map-utils";
 import { CalendarProvider } from "@/features/calendar/calendar-context";
 import { HabitsProvider } from "@/features/habits/context/habits-context";
 import { NotificationProvider } from "@/features/notifications/context/notification-context";
@@ -165,23 +166,10 @@ function Workspace({ initialView }: { initialView: WorkspaceView }) {
       }));
       setView("notes");
     } else {
-      const id = crypto.randomUUID();
+      const newMap = createDefaultMindMap(title);
       update((current) => ({
         ...current,
-        maps: [
-          {
-            id,
-            title,
-            updated: "Just now",
-            starred: false,
-            nodes: [
-              { id: "root", position: { x: 250, y: 180 }, data: { label: title, color: "violet" }, type: "mind" },
-              { id: "idea", position: { x: 560, y: 180 }, data: { label: "Add an idea", color: "mint" }, type: "mind" },
-            ],
-            edges: [{ id: "root-idea", source: "root", target: "idea" }],
-          },
-          ...current.maps,
-        ],
+        maps: [newMap, ...current.maps],
       }));
       setView("maps");
     }

@@ -1,6 +1,13 @@
-import type { MindMapNodeType, Prisma, PrismaClient } from "@prisma/client";
+import type {
+  MindMapEdgeType,
+  MindMapNodeType,
+  Prisma,
+  PrismaClient,
+} from "@prisma/client";
 import type {
   DeskData,
+  MapEdgeItem,
+  MapNodeItem,
   MindMapItem,
   NoteItem,
   Priority,
@@ -44,8 +51,107 @@ interface NoteMetadataJson {
 
 interface MapMetadataJson {
   theme?: "calm" | "paper" | "midnight";
-  layout?: "freeform" | "tree" | "radial";
+  layout?:
+    | "balanced"
+    | "horizontal"
+    | "vertical"
+    | "radial"
+    | "freeform"
+    | "tree";
   starred?: boolean;
+}
+
+const VALID_NODE_TYPES: Set<MindMapNodeType> = new Set([
+  "idea",
+  "task_ref",
+  "note_ref",
+  "group",
+]);
+
+const VALID_EDGE_TYPES: Set<MindMapEdgeType> = new Set([
+  "default",
+  "smoothstep",
+  "bezier",
+  "straight",
+]);
+
+const VALID_SHAPES: Set<NonNullable<MapNodeItem["data"]["shape"]>> = new Set([
+  "rounded",
+  "pill",
+  "rectangle",
+  "diamond",
+  "circle",
+]);
+
+const VALID_FONT_SIZES: Set<NonNullable<MapNodeItem["data"]["fontSize"]>> = new Set([
+  "sm",
+  "base",
+  "lg",
+  "xl",
+]);
+
+export function toSemanticNodeType(
+  rawType: unknown,
+  data?: Record<string, unknown>
+): MindMapNodeType {
+  if (data?.linkedTaskId) return "task_ref";
+  if (data?.linkedNoteId) return "note_ref";
+  if (data?.isGroup || rawType === "group") return "group";
+  if (
+    typeof rawType === "string" &&
+    VALID_NODE_TYPES.has(rawType as MindMapNodeType)
+  ) {
+    return rawType as MindMapNodeType;
+  }
+  return "idea";
+}
+
+export function toSemanticEdgeType(rawType: unknown): MindMapEdgeType {
+  if (
+    typeof rawType === "string" &&
+    VALID_EDGE_TYPES.has(rawType as MindMapEdgeType)
+  ) {
+    return rawType as MindMapEdgeType;
+  }
+  return "smoothstep";
+}
+
+export function sanitizeMapIdentifiers(map: MindMapItem): MindMapItem {
+  if (!map?.nodes || !Array.isArray(map.nodes)) return map;
+
+  const hasLegacyIds =
+    map.nodes.some((n) => n.id === "root" || n.id === "idea") ||
+    map.edges?.some((e) => e.id === "root-idea");
+
+  if (!hasLegacyIds) return map;
+
+  const idMap = new Map<string, string>();
+  const sanitizedNodes = map.nodes.map((node) => {
+    if (node.id === "root" || node.id === "idea") {
+      const newId = `${map.id}_${node.id}`;
+      idMap.set(node.id, newId);
+      return { ...node, id: newId };
+    }
+    return node;
+  });
+
+  const sanitizedEdges = (map.edges || []).map((edge) => {
+    const newSource = idMap.get(edge.source) || edge.source;
+    const newTarget = idMap.get(edge.target) || edge.target;
+    const newId = edge.id === "root-idea" ? `${map.id}_root-idea` : edge.id;
+    return {
+      ...edge,
+      id: newId,
+      source: newSource,
+      target: newTarget,
+    };
+  });
+
+  return {
+    ...map,
+    nodes: sanitizedNodes,
+    edges: sanitizedEdges,
+  };
 }
 
 
@@ -174,21 +280,70 @@ export async function getWorkspaceDeskData(
       starred: meta.starred ?? false,
       theme: meta.theme || "calm",
       layout: meta.layout || "freeform",
-      nodes: m.nodes.map((node) => ({
-        id: node.id,
-        position: { x: node.positionX, y: node.positionY },
-        data: (node.data as { label: string; color: string }) || {
-          label: node.label,
-          color: "violet",
-        },
-        type: node.type,
-      })),
-      edges: m.edges.map((edge) => ({
-        id: edge.id,
-        source: edge.sourceNodeId,
-        target: edge.targetNodeId,
-        animated: edge.animated,
-      })),
+      nodes: m.nodes.map((node) => {
+        const nodeData =
+          typeof node.data === "object" && node.data !== null
+            ? (node.data as Record<string, unknown>)
+            : {};
+        return {
+          id: node.id,
+          position: { x: node.positionX, y: node.positionY },
+          data: {
+            label:
+              node.label ||
+              (typeof nodeData.label === "string" ? nodeData.label : "Idea"),
+            color:
+              typeof nodeData.color === "string"
+                ? nodeData.color
+                : "violet",
+            note:
+              node.noteExcerpt ||
+              (typeof nodeData.note === "string" ? nodeData.note : ""),
+            shape:
+              typeof nodeData.shape === "string" &&
+              VALID_SHAPES.has(nodeData.shape as NonNullable<MapNodeItem["data"]["shape"]>)
+                ? (nodeData.shape as NonNullable<MapNodeItem["data"]["shape"]>)
+                : "rounded",
+            icon:
+              typeof nodeData.icon === "string" ? nodeData.icon : undefined,
+            collapsed: Boolean(nodeData.collapsed),
+            linkedTaskId:
+              node.linkedTaskId ||
+              (typeof nodeData.linkedTaskId === "string"
+                ? nodeData.linkedTaskId
+                : undefined),
+            linkedNoteId:
+              node.linkedNoteId ||
+              (typeof nodeData.linkedNoteId === "string"
+                ? nodeData.linkedNoteId
+                : undefined),
+            fontSize:
+              typeof nodeData.fontSize === "string" &&
+              VALID_FONT_SIZES.has(nodeData.fontSize as NonNullable<MapNodeItem["data"]["fontSize"]>)
+                ? (nodeData.fontSize as NonNullable<MapNodeItem["data"]["fontSize"]>)
+                : "base",
+            ...nodeData,
+          },
+          type: "mind",
+        };
+      }),
+      edges: m.edges.map((edge) => {
+        const edgeStyle =
+          typeof edge.style === "object" && edge.style !== null
+            ? (edge.style as Record<string, unknown>)
+            : {};
+        return {
+          id: edge.id,
+          source: edge.sourceNodeId,
+          target: edge.targetNodeId,
+          animated: edge.animated,
+          label:
+            edge.label ||
+            (typeof edgeStyle.label === "string" ? edgeStyle.label : undefined),
+          type: edge.type || "smoothstep",
+          style: edgeStyle,
+        };
+      }),
     };
   });
 
@@ -306,6 +461,12 @@ export function reconcileProfilePreferences(
       new Set([
         ...(existingTombstones.notes || []),
         ...(options.deletedNoteIds || []),
+      ])
+    ).slice(-500),
+    maps: Array.from(
+      new Set([
+        ...(existingTombstones.maps || []),
+        ...(options.deletedMapIds || []),
       ])
     ).slice(-500),
     habits: Array.from(
@@ -773,6 +934,10 @@ async function executeSaveWorkspaceDeskData(
       ...(options.deletedNoteIds || []),
       ...(existingTombstones.notes || []),
     ]);
+    const deletedMapIdsSet = new Set([
+      ...(options.deletedMapIds || []),
+      ...(existingTombstones.maps || []),
+    ]);
 
     // 0. Handle deleted projects if specified or tombstoned
     if (deletedProjectIdsSet.size > 0) {
@@ -1122,8 +1287,11 @@ async function executeSaveWorkspaceDeskData(
 
     // 5. Save Mind Maps if provided
     if (data.maps && Array.isArray(data.maps)) {
-      for (const map of data.maps) {
-        if (!map?.id) continue;
+      for (const rawMap of data.maps) {
+        if (!rawMap?.id || deletedMapIdsSet.has(rawMap.id)) continue;
+
+        // Sanitize legacy hardcoded IDs (e.g. "root", "idea") per map to avoid cross-map PK collisions
+        const map = sanitizeMapIdentifiers(rawMap);
 
         const mapMeta: MapMetadataJson = {
           theme: map.theme || "calm",
@@ -1153,12 +1321,96 @@ async function executeSaveWorkspaceDeskData(
           },
         });
 
-        // Save nodes
+        // Reconcile nodes and edges if nodes are provided
         if (map.nodes && Array.isArray(map.nodes)) {
-          const nodeIds = new Set<string>();
+          // 1. Gather valid incoming nodes
+          const incomingNodes = new Map<string, MapNodeItem>();
           for (const node of map.nodes) {
             if (!node?.id) continue;
-            nodeIds.add(node.id);
+            incomingNodes.set(node.id, node);
+          }
+          const validNodeIds = Array.from(incomingNodes.keys());
+
+          // 2. Gather valid incoming edges (must connect existing nodes in this map, no self-loops)
+          const incomingEdges = new Map<string, MapEdgeItem>();
+          if (map.edges && Array.isArray(map.edges)) {
+            for (const edge of map.edges) {
+              if (
+                edge?.id &&
+                edge?.source &&
+                edge?.target &&
+                incomingNodes.has(edge.source) &&
+                incomingNodes.has(edge.target) &&
+                edge.source !== edge.target
+              ) {
+                incomingEdges.set(edge.id, edge);
+              }
+            }
+          }
+          const validEdgeIds = Array.from(incomingEdges.keys());
+
+          // 3. Delete removed edges from MySQL first to prevent foreign-key violations
+          if (validEdgeIds.length === 0) {
+            await tx.mindMapEdge.deleteMany({
+              where: {
+                mindMapId: map.id,
+                workspaceId,
+                userId: actor.id,
+              },
+            });
+          } else {
+            await tx.mindMapEdge.deleteMany({
+              where: {
+                mindMapId: map.id,
+                workspaceId,
+                userId: actor.id,
+                id: { notIn: validEdgeIds },
+              },
+            });
+          }
+
+          // 4. Delete removed nodes safely from MySQL after handling edges
+          if (validNodeIds.length === 0) {
+            await tx.mindMapNode.deleteMany({
+              where: {
+                mindMapId: map.id,
+                workspaceId,
+                userId: actor.id,
+              },
+            });
+          } else {
+            await tx.mindMapNode.deleteMany({
+              where: {
+                mindMapId: map.id,
+                workspaceId,
+                userId: actor.id,
+                id: { notIn: validNodeIds },
+              },
+            });
+          }
+
+          // 5. Upsert active nodes with strictly valid MindMapNodeType enum
+          for (const node of incomingNodes.values()) {
+            const nodeData =
+              typeof node.data === "object" && node.data !== null
+                ? (node.data as Record<string, unknown>)
+                : {};
+            const semanticType = toSemanticNodeType(node.type, nodeData);
+            const label =
+              typeof nodeData.label === "string" && nodeData.label.trim()
+                ? nodeData.label.trim()
+                : "Idea";
+            const noteExcerpt =
+              typeof nodeData.note === "string" ? nodeData.note : "";
+            const linkedTaskId =
+              typeof nodeData.linkedTaskId === "string" && nodeData.linkedTaskId
+                ? nodeData.linkedTaskId
+                : null;
+            const linkedNoteId =
+              typeof nodeData.linkedNoteId === "string" && nodeData.linkedNoteId
+                ? nodeData.linkedNoteId
+                : null;
+
             await tx.mindMapNode.upsert({
               where: {
                 id_userId_workspaceId: {
@@ -1169,71 +1421,87 @@ async function executeSaveWorkspaceDeskData(
               },
               update: {
                 mindMapId: map.id,
-                label: node.data?.label || "Idea",
-                positionX: node.position?.x ?? 0,
-                positionY: node.position?.y ?? 0,
-                data: (node.data || {}) as unknown as Prisma.InputJsonValue,
-                type: (node.type as MindMapNodeType) || "idea",
+                label,
+                noteExcerpt,
+                positionX:
+                  typeof node.position?.x === "number" ? node.position.x : 0,
+                positionY:
+                  typeof node.position?.y === "number" ? node.position.y : 0,
+                data: nodeData as unknown as Prisma.InputJsonValue,
+                type: semanticType,
+                linkedTaskId,
+                linkedNoteId,
               },
               create: {
                 id: node.id,
                 mindMapId: map.id,
                 workspaceId,
                 userId: actor.id,
-                label: node.data?.label || "Idea",
-                positionX: node.position?.x ?? 0,
-                positionY: node.position?.y ?? 0,
-                data: (node.data || {}) as unknown as Prisma.InputJsonValue,
-                type: (node.type as MindMapNodeType) || "idea",
+                label,
+                noteExcerpt,
+                positionX:
+                  typeof node.position?.x === "number" ? node.position.x : 0,
+                positionY:
+                  typeof node.position?.y === "number" ? node.position.y : 0,
+                data: nodeData as unknown as Prisma.InputJsonValue,
+                type: semanticType,
+                linkedTaskId,
+                linkedNoteId,
                 style: {},
               },
             });
           }
 
-          // Save edges that connect valid nodes
-          if (map.edges && Array.isArray(map.edges)) {
-            for (const edge of map.edges) {
-              if (
-                !edge?.id ||
-                !edge?.source ||
-                !edge?.target ||
-                !nodeIds.has(edge.source) ||
-                !nodeIds.has(edge.target)
-              ) {
-                continue;
-              }
+          // 6. Upsert active edges with valid MindMapEdgeType enum and endpoints
+          for (const edge of incomingEdges.values()) {
+            const semanticEdgeType = toSemanticEdgeType(edge.type);
+            const edgeLabel = typeof edge.label === "string" ? edge.label : "";
+            const edgeStyle =
+              typeof edge.style === "object" && edge.style !== null
+                ? (edge.style as Record<string, unknown>)
+                : {};
 
-              await tx.mindMapEdge.upsert({
-                where: {
-                  id: edge.id,
-                },
-                update: {
-                  animated: Boolean(edge.animated),
-                },
-                create: {
-                  id: edge.id,
-                  mindMapId: map.id,
-                  workspaceId,
-                  userId: actor.id,
-                  sourceNodeId: edge.source,
-                  targetNodeId: edge.target,
-                  animated: Boolean(edge.animated),
-                  style: {},
-                },
-              });
-            }
+            await tx.mindMapEdge.upsert({
+              where: {
+                id: edge.id,
+              },
+              update: {
+                mindMapId: map.id,
+                workspaceId,
+                userId: actor.id,
+                sourceNodeId: edge.source,
+                targetNodeId: edge.target,
+                animated: Boolean(edge.animated),
+                label: edgeLabel,
+                type: semanticEdgeType,
+                style: edgeStyle as unknown as Prisma.InputJsonValue,
+              },
+              create: {
+                id: edge.id,
+                mindMapId: map.id,
+                workspaceId,
+                userId: actor.id,
+                sourceNodeId: edge.source,
+                targetNodeId: edge.target,
+                animated: Boolean(edge.animated),
+                label: edgeLabel,
+                type: semanticEdgeType,
+                style: edgeStyle as unknown as Prisma.InputJsonValue,
+              },
+            });
           }
         }
       }
     }
 
-    // Handle deleted mind maps if specified
-    if (options.deletedMapIds && options.deletedMapIds.length > 0) {
+    // Handle deleted mind maps if specified or tombstoned
+    if (deletedMapIdsSet.size > 0) {
+      const deletedMapIds = Array.from(deletedMapIdsSet);
       await tx.mindMap.deleteMany({
         where: {
           workspaceId,
           userId: actor.id,
-          id: { in: options.deletedMapIds },
+          id: { in: deletedMapIds },
         },
       });
     }
