@@ -12,7 +12,7 @@ import {
 import { useTheme } from "next-themes";
 
 import { initialDeskData, initialTaskLists } from "./seed";
-import type { DeskData, TaskItem, TaskList } from "./types";
+import type { DeskData, NoteItem, TaskItem, TaskList } from "./types";
 import { sanitizeMapIdentifiers } from "./utils/mind-map-utils";
 import { useUIStore } from "@/stores/ui-store";
 import type { AuthUserSummary } from "@/types/domain";
@@ -97,11 +97,41 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
   const existing = useContext(DeskContext);
   const { setTheme } = useTheme();
 
+  // Deletion tracking sets with user-scoped localStorage persistence across refreshes
+  const effectiveUserId = user?.id || "guest";
+  const initialTombstones = loadPendingTombstones(effectiveUserId);
+  const deletedTaskIdsRef = useRef<Set<string>>(new Set(initialTombstones.tasks || []));
+  const deletedNoteIdsRef = useRef<Set<string>>(new Set(initialTombstones.notes || []));
+  const deletedMapIdsRef = useRef<Set<string>>(new Set(initialTombstones.maps || []));
+  const deletedTaskListIdsRef = useRef<Set<string>>(new Set(initialTombstones.taskLists || []));
+  const deletedProjectIdsRef = useRef<Set<string>>(new Set(initialTombstones.projects || []));
+
   // If user is authenticated, start in authoritative loading state to prevent content flashing
-  const [data, setData] = useState<DeskData>(() => initialData || initialDeskData);
+  const [data, setData] = useState<DeskData>(() => {
+    if (initialData) return initialData;
+    if (typeof window !== "undefined" && !user?.id) {
+      try {
+        const cached = window.localStorage.getItem(getUserStorageKey("guest"));
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          const sanitized: DeskData = {
+            ...parsed,
+            notes: (parsed.notes || []).filter(
+              (n: NoteItem) => !initialTombstones.notes?.includes(n.id)
+            ),
+          };
+          return migrateDeskData(sanitized);
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return initialDeskData;
+  });
   const [isLoading, setIsLoading] = useState<boolean>(() => Boolean(user?.id));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const isHydratedRef = useRef(false);
 
   // Synchronization refs to avoid race conditions & lost saves
   const latestDataRef = useRef<DeskData>(initialData || initialDeskData);
@@ -111,14 +141,6 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
   const hasPendingWriteRef = useRef(false);
   const isUserDirtyRef = useRef(false);
   const previousUserIdRef = useRef<string | null>(null);
-
-  // Deletion tracking sets with user-scoped localStorage persistence across refreshes
-  const initialTombstones = user?.id ? loadPendingTombstones(user.id) : {};
-  const deletedTaskIdsRef = useRef<Set<string>>(new Set(initialTombstones.tasks || []));
-  const deletedNoteIdsRef = useRef<Set<string>>(new Set(initialTombstones.notes || []));
-  const deletedMapIdsRef = useRef<Set<string>>(new Set(initialTombstones.maps || []));
-  const deletedTaskListIdsRef = useRef<Set<string>>(new Set(initialTombstones.taskLists || []));
-  const deletedProjectIdsRef = useRef<Set<string>>(new Set(initialTombstones.projects || []));
 
   // Sync latestDataRef whenever data changes
   latestDataRef.current = data;
@@ -297,15 +319,14 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
       else if (type === "project") deletedProjectIdsRef.current.add(id);
       isUserDirtyRef.current = true;
 
-      if (user?.id) {
-        savePendingTombstones(user.id, {
-          tasks: deletedTaskIdsRef.current,
-          notes: deletedNoteIdsRef.current,
-          maps: deletedMapIdsRef.current,
-          taskLists: deletedTaskListIdsRef.current,
-          projects: deletedProjectIdsRef.current,
-        });
-      }
+      const targetUserId = user?.id || "guest";
+      savePendingTombstones(targetUserId, {
+        tasks: deletedTaskIdsRef.current,
+        notes: deletedNoteIdsRef.current,
+        maps: deletedMapIdsRef.current,
+        taskLists: deletedTaskListIdsRef.current,
+        projects: deletedProjectIdsRef.current,
+      });
     },
     [user?.id]
   );
@@ -317,7 +338,27 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
     const currentUserId = user?.id;
 
     if (!currentUserId) {
-      // Unauthenticated / Guest preview mode: initialize clean empty workspace
+      // Unauthenticated / Guest preview mode: load from guest offline cache if present
+      if (typeof window !== "undefined") {
+        const cached = window.localStorage.getItem(getUserStorageKey("guest"));
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            const sanitized: DeskData = {
+              ...parsed,
+              notes: (parsed.notes || []).filter(
+                (n: NoteItem) => !deletedNoteIdsRef.current.has(n.id)
+              ),
+            };
+            const migrated = migrateDeskData(sanitized);
+            setData(migrated);
+            latestDataRef.current = migrated;
+          } catch {
+            // Ignore corrupted guest cache
+          }
+        }
+      }
+      isHydratedRef.current = true;
       setIsLoading(false);
       setLoadError(null);
       return;
@@ -413,6 +454,7 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
         useUIStore.getState().setSaveStatus("error");
       }
     } finally {
+      isHydratedRef.current = true;
       setIsLoading(false);
     }
   }, [existing, persistToServer, user?.id]);
@@ -443,15 +485,11 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
     document.documentElement.classList.toggle("dark", data.theme === "dark");
     setTheme?.(data.theme);
 
-    if (!isLoading) {
+    if (!isLoading && isHydratedRef.current) {
       // Cache user-scoped state locally
       try {
-        if (user?.id) {
-          window.localStorage.setItem(
-            getUserStorageKey(user.id),
-            JSON.stringify(data)
-          );
-        }
+        const targetKey = getUserStorageKey(user?.id || "guest");
+        window.localStorage.setItem(targetKey, JSON.stringify(data));
       } catch {
         // Ignore quota errors
       }
