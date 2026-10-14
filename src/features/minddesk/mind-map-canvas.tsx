@@ -21,11 +21,12 @@ import {
   type EdgeChange,
   type NodeChange,
   type NodeProps,
+  type OnNodeDrag,
   type ReactFlowInstance,
   getNodesBounds,
   getViewportForBounds,
 } from "@xyflow/react";
-import { toPng, toSvg } from "html-to-image";
+import { toPng, toSvg, toJpeg } from "html-to-image";
 import { Link2 } from "lucide-react";
 
 import type {
@@ -40,6 +41,7 @@ import {
   applyLayout,
   calculateNonDisruptiveNodePosition,
   checkNodeOverlap,
+  createPdfFromJpeg,
   estimateNodeDimensions,
   findRootNode,
   generateEdgeId,
@@ -99,6 +101,7 @@ export function MindMapCanvas({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMatches, setSearchMatches] = useState<string[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const [hoveredDropTargetId, setHoveredDropTargetId] = useState<string | null>(null);
 
   // Dialog states
   const [noteDialogNodeId, setNoteDialogNodeId] = useState<string | null>(null);
@@ -171,6 +174,38 @@ export function MindMapCanvas({
     return map;
   }, [edges]);
 
+  // 10. Collapse / Expand: compute all descendants that should be hidden
+  const collapsedHiddenNodeIds = useMemo(() => {
+    const hidden = new Set<string>();
+    const treeEdges = edges.filter((e) => e.label !== "relates to");
+
+    for (const node of nodes) {
+      if (node.data.collapsed) {
+        const descendants = getSubtreeNodeIds(node.id, treeEdges);
+        for (const descId of descendants) {
+          if (descId !== node.id) {
+            hidden.add(descId);
+          }
+        }
+      }
+    }
+    return hidden;
+  }, [edges, nodes]);
+
+  const displayNodes = useMemo(() => {
+    return nodes.map((n) => ({
+      ...n,
+      hidden: collapsedHiddenNodeIds.has(n.id),
+    }));
+  }, [nodes, collapsedHiddenNodeIds]);
+
+  const displayEdges = useMemo(() => {
+    return edges.map((e) => ({
+      ...e,
+      hidden: collapsedHiddenNodeIds.has(e.source) || collapsedHiddenNodeIds.has(e.target),
+    }));
+  }, [edges, collapsedHiddenNodeIds]);
+
   // Record history snapshot
   const pushHistory = useCallback(
     (newNodes: MindFlowNode[], newEdges: Edge[]) => {
@@ -199,6 +234,7 @@ export function MindMapCanvas({
           collapsed: n.data.collapsed,
           linkedTaskId: n.data.linkedTaskId,
           linkedNoteId: n.data.linkedNoteId,
+          externalUrl: n.data.externalUrl,
           fontSize: n.data.fontSize,
           isRoot: n.data.isRoot,
         },
@@ -645,11 +681,12 @@ export function MindMapCanvas({
         const next = curr.map((n) =>
           n.id === nodeId ? { ...n, data: { ...n.data, collapsed: nextCollapsed } } : n
         );
+        pushHistory(next, edges);
         triggerSave(next, edges);
         return next;
       });
     },
-    [edges, triggerSave]
+    [edges, pushHistory, triggerSave]
   );
 
   // Undo / Redo Execution
@@ -772,6 +809,94 @@ export function MindMapCanvas({
       });
     },
     [edges, nodes, pushHistory, themeConfig.edgeStroke, triggerSave]
+  );
+
+  // 5. Drag & Drop Reparenting Handlers (with Cycle Prevention & Target Highlighting)
+  const handleNodeDrag: OnNodeDrag<MindFlowNode> = useCallback(
+    (_event, draggedNode) => {
+      if (draggedNode.data.isRoot) {
+        if (hoveredDropTargetId) setHoveredDropTargetId(null);
+        return;
+      }
+
+      const treeEdges = edges.filter((e) => e.label !== "relates to");
+      const draggedDim = estimateNodeDimensions(draggedNode);
+      const draggedRect = {
+        x: draggedNode.position.x,
+        y: draggedNode.position.y,
+        width: draggedDim.width,
+        height: draggedDim.height,
+      };
+
+      let foundTargetId: string | null = null;
+
+      for (const candidate of nodes) {
+        if (candidate.id === draggedNode.id) continue;
+        if (collapsedHiddenNodeIds.has(candidate.id)) continue;
+        if (willCreateCycle(candidate.id, draggedNode.id, treeEdges)) continue;
+
+        const candDim = estimateNodeDimensions(candidate);
+        const candRect = {
+          x: candidate.position.x,
+          y: candidate.position.y,
+          width: candDim.width,
+          height: candDim.height,
+        };
+
+        if (checkNodeOverlap(draggedRect, candRect, 10, 10)) {
+          foundTargetId = candidate.id;
+          break;
+        }
+      }
+
+      if (foundTargetId !== hoveredDropTargetId) {
+        setHoveredDropTargetId(foundTargetId);
+      }
+    },
+    [collapsedHiddenNodeIds, edges, hoveredDropTargetId, nodes]
+  );
+
+  const handleNodeDragStop: OnNodeDrag<MindFlowNode> = useCallback(
+    (_event, draggedNode) => {
+      if (hoveredDropTargetId && !draggedNode.data.isRoot) {
+        const targetParentId = hoveredDropTargetId;
+        setHoveredDropTargetId(null);
+
+        const treeEdges = edges.filter((e) => e.label !== "relates to");
+        if (
+          targetParentId !== draggedNode.id &&
+          !willCreateCycle(targetParentId, draggedNode.id, treeEdges)
+        ) {
+          // Remove old parent tree edge targeting draggedNode.id
+          const nextEdges = edges.filter(
+            (e) => !(e.target === draggedNode.id && e.label !== "relates to")
+          );
+
+          // Add new tree edge from targetParentId to draggedNode.id
+          const newEdge: Edge = {
+            id: generateEdgeId(),
+            source: targetParentId,
+            target: draggedNode.id,
+            type: "smoothstep",
+            style: { stroke: themeConfig.edgeStroke, strokeWidth: 2 },
+          };
+          nextEdges.push(newEdge);
+
+          const nextNodes = nodes.map((n) =>
+            n.id === draggedNode.id ? { ...n, position: draggedNode.position } : n
+          );
+
+          setNodes(nextNodes);
+          setEdges(nextEdges);
+          pushHistory(nextNodes, nextEdges);
+          triggerSave(nextNodes, nextEdges);
+          return;
+        }
+      }
+
+      setHoveredDropTargetId(null);
+    },
+    [edges, hoveredDropTargetId, nodes, pushHistory, themeConfig.edgeStroke, triggerSave]
   );
 
   // Search & Navigation
@@ -971,6 +1096,40 @@ export function MindMapCanvas({
     }
   };
 
+  const exportPdf = async () => {
+    if (!containerRef.current) return;
+    const viewportElem = containerRef.current.querySelector<HTMLElement>(".react-flow__viewport");
+    if (!viewportElem) return;
+
+    try {
+      const bounds = getNodesBounds(nodes);
+      const width = Math.max(bounds.width + 120, 800);
+      const height = Math.max(bounds.height + 120, 600);
+
+      const dataUrl = await toJpeg(viewportElem, {
+        backgroundColor: themeConfig.canvasBg,
+        quality: 0.95,
+      });
+
+      const base64 = dataUrl.split(",")[1];
+      const binaryStr = atob(base64);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+
+      const pdfBlob = createPdfFromJpeg(bytes, width, height);
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement("a");
+      a.download = `minddesk-${Date.now()}.pdf`;
+      a.href = url;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Fallback
+    }
+  };
+
   const exportJson = () => {
     const payload = {
       app: "MindDesk",
@@ -1040,6 +1199,8 @@ export function MindMapCanvas({
             ...props.data,
             isSelected: selectedNodeId === props.id,
             isConnectingSource: connectingSourceId === props.id,
+            isDropTarget: hoveredDropTargetId === props.id,
+            externalUrl: props.data.externalUrl,
             childCount: childCountMap.get(props.id) || 0,
             hasChildren: (childCountMap.get(props.id) || 0) > 0,
             isSearchMatch: searchMatches.includes(props.id),
@@ -1076,6 +1237,8 @@ export function MindMapCanvas({
             ...props.data,
             isSelected: selectedNodeId === props.id,
             isConnectingSource: connectingSourceId === props.id,
+            isDropTarget: hoveredDropTargetId === props.id,
+            externalUrl: props.data.externalUrl,
             childCount: childCountMap.get(props.id) || 0,
             hasChildren: (childCountMap.get(props.id) || 0) > 0,
             isSearchMatch: searchMatches.includes(props.id),
@@ -1112,6 +1275,8 @@ export function MindMapCanvas({
             ...props.data,
             isSelected: selectedNodeId === props.id,
             isConnectingSource: connectingSourceId === props.id,
+            isDropTarget: hoveredDropTargetId === props.id,
+            externalUrl: props.data.externalUrl,
             childCount: childCountMap.get(props.id) || 0,
             hasChildren: (childCountMap.get(props.id) || 0) > 0,
             isSearchMatch: searchMatches.includes(props.id),
@@ -1143,6 +1308,7 @@ export function MindMapCanvas({
       duplicateNode,
       edges,
       editingNodeId,
+      hoveredDropTargetId,
       pushHistory,
       searchMatches,
       selectedNodeId,
@@ -1206,6 +1372,7 @@ export function MindMapCanvas({
         onAddTopic={() => addChildNode()}
         onExportPng={exportPng}
         onExportSvg={exportSvg}
+        onExportPdf={exportPdf}
         onExportJson={exportJson}
         onImportJson={() => fileInputRef.current?.click()}
       />
@@ -1232,12 +1399,16 @@ export function MindMapCanvas({
 
       {/* React Flow Viewport */}
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={displayNodes}
+        edges={displayEdges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeDrag={handleNodeDrag}
+        onNodeDragStop={handleNodeDragStop}
+        nodesDraggable={true}
+        panOnDrag={true}
         onInit={setReactFlowInstance}
         onNodeClick={handleNodeClick}
         onPaneClick={() => {
@@ -1303,7 +1474,7 @@ export function MindMapCanvas({
         />
       )}
 
-      {/* Dialog 2: Link to Task / Note */}
+      {/* Dialog 2: Link to Task, Note or External URL */}
       {activeLinkNode && (
         <NodeLinkDialog
           open={Boolean(linkDialogNodeId)}
@@ -1312,6 +1483,7 @@ export function MindMapCanvas({
           notes={availableNotes}
           currentTaskId={activeLinkNode.data.linkedTaskId}
           currentNoteId={activeLinkNode.data.linkedNoteId}
+          currentExternalUrl={activeLinkNode.data.externalUrl}
           onClose={() => setLinkDialogNodeId(null)}
           onLinkTask={(taskId) => {
             setNodes((curr) => {
@@ -1323,6 +1495,7 @@ export function MindMapCanvas({
                         ...n.data,
                         linkedTaskId: taskId,
                         linkedNoteId: undefined,
+                        externalUrl: undefined,
                       },
                     }
                   : n
@@ -1342,6 +1515,27 @@ export function MindMapCanvas({
                         ...n.data,
                         linkedNoteId: noteId,
                         linkedTaskId: undefined,
+                        externalUrl: undefined,
+                      },
+                    }
+                  : n
+              );
+              pushHistory(next, edges);
+              triggerSave(next, edges);
+              return next;
+            });
+          }}
+          onLinkUrl={(url) => {
+            setNodes((curr) => {
+              const next = curr.map((n) =>
+                n.id === activeLinkNode.id
+                  ? {
+                      ...n,
+                      data: {
+                        ...n.data,
+                        externalUrl: url,
+                        linkedTaskId: undefined,
+                        linkedNoteId: undefined,
                       },
                     }
                   : n
@@ -1361,6 +1555,7 @@ export function MindMapCanvas({
                         ...n.data,
                         linkedTaskId: undefined,
                         linkedNoteId: undefined,
+                        externalUrl: undefined,
                       },
                     }
                   : n

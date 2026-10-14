@@ -23,6 +23,7 @@ import {
   Link2,
   GitBranch,
   ChevronRight,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MapNodeItem, MindMapTheme } from "../types";
@@ -33,6 +34,7 @@ export type FlowNodeData = MapNodeItem["data"] & {
   isSearchMatch?: boolean;
   isSelected?: boolean;
   isConnectingSource?: boolean;
+  isDropTarget?: boolean;
   childCount?: number;
   hasChildren?: boolean;
   onLabelChange?: (id: string, newLabel: string) => void;
@@ -398,9 +400,19 @@ export const MindMapNode = memo(function MindMapNode({
       </NodeToolbar>
 
       {/* Main Node Card */}
+      {data.isDropTarget && (
+        <div
+          data-testid="drop-target-indicator"
+          className="absolute -top-7 left-1/2 -translate-x-1/2 z-30 px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold shadow-lg whitespace-nowrap animate-bounce pointer-events-none"
+        >
+          Drop to Reparent
+        </div>
+      )}
       <div
         data-testid={`mindmap-node-${id}`}
         className={`relative border transition-all duration-150 cursor-pointer min-w-[150px] max-w-[320px] ${shapeClass} ${
+          data.isDropTarget ? "ring-4 ring-emerald-500 ring-offset-2 scale-105 shadow-2xl" : ""
+        } ${
           data.isSearchMatch ? "ring-4 ring-amber-400 ring-offset-2 animate-pulse" : ""
         } ${
           isConnectingSource ? "ring-4 ring-indigo-500 ring-offset-2 animate-pulse" : ""
@@ -445,6 +457,20 @@ export const MindMapNode = memo(function MindMapNode({
             >
               <FileText className="h-2.5 w-2.5" /> Doc
             </span>
+          )}
+          {data.externalUrl && (
+            <a
+              href={data.externalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`External Link: ${data.externalUrl}`}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-medium hover:underline cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+            >
+              <Globe className="h-2.5 w-2.5" /> Link
+            </a>
           )}
         </div>
 
@@ -491,6 +517,7 @@ export const MindMapNode = memo(function MindMapNode({
         {data.hasChildren && (
           <button
             type="button"
+            data-testid="collapse-toggle-button"
             title={data.collapsed ? "Expand subtopics" : "Collapse subtopics"}
             className="absolute -right-3 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center h-5 w-5 rounded-full border shadow-sm text-[10px] font-bold transition-transform hover:scale-110"
             style={{

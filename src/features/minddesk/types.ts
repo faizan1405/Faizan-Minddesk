@@ -85,6 +85,7 @@ export interface MapNodeItem {
     collapsed?: boolean;
     linkedTaskId?: string;
     linkedNoteId?: string;
+    externalUrl?: string;
     fontSize?: "sm" | "base" | "lg" | "xl";
     tags?: string[];
     isRoot?: boolean;

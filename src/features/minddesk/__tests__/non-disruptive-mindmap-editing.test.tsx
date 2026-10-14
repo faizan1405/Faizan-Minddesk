@@ -10,7 +10,6 @@ import {
   layoutHorizontalTree,
   layoutVerticalTree,
   layoutRadialMap,
-  generateNodeId,
   generateEdgeId,
 } from "../utils/mind-map-utils";
 import type { MapEdgeItem, MapNodeItem } from "../types";

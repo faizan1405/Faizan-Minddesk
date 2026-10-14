@@ -265,7 +265,7 @@ export function getSubtreeNodeIds(startNodeId: string, edges: { source: string; 
 export function willCreateCycle(
   sourceId: string,
   targetId: string,
-  edges: MapEdgeItem[]
+  edges: { source: string; target: string }[]
 ): boolean {
   if (sourceId === targetId) return true;
   // If targetId can reach sourceId, adding sourceId -> targetId creates a cycle
@@ -890,3 +890,78 @@ export function applyLayout(
       return nodes;
   }
 }
+
+// ============================================================================
+// 4. Client-side PDF Generator (Zero-dependency Standard PDF 1.4 DCTDecode)
+// ============================================================================
+
+/**
+ * Creates a valid, standalone PDF 1.4 binary Blob embedding a JPEG image.
+ * Uses native PDF DCTDecode image XObject, requiring zero external dependencies.
+ */
+export function createPdfFromJpeg(
+  jpegBytes: Uint8Array,
+  imageWidth: number,
+  imageHeight: number
+): Blob {
+  const ptWidth = Math.max(Math.round(imageWidth * 0.75), 100);
+  const ptHeight = Math.max(Math.round(imageHeight * 0.75), 100);
+
+  const enc = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+  const offsets: number[] = [];
+  let currentByteOffset = 0;
+
+  function pushBytes(data: Uint8Array) {
+    chunks.push(data);
+    currentByteOffset += data.length;
+  }
+
+  function pushText(text: string) {
+    pushBytes(enc.encode(text));
+  }
+
+  // PDF Header
+  pushText("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+
+  // Object 1: Catalog
+  offsets.push(currentByteOffset);
+  pushText("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+
+  // Object 2: Pages
+  offsets.push(currentByteOffset);
+  pushText("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+
+  // Object 3: Page
+  offsets.push(currentByteOffset);
+  pushText(
+    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${ptWidth} ${ptHeight}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>\nendobj\n`
+  );
+
+  // Object 4: Image XObject (DCTDecode stream)
+  offsets.push(currentByteOffset);
+  pushText(
+    `4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${imageWidth} /Height ${imageHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`
+  );
+  pushBytes(jpegBytes);
+  pushText("\nendstream\nendobj\n");
+
+  // Object 5: Content stream
+  const contentStream = `q\n${ptWidth} 0 0 ${ptHeight} 0 0 cm\n/Im0 Do\nQ\n`;
+  offsets.push(currentByteOffset);
+  pushText(
+    `5 0 obj\n<< /Length ${enc.encode(contentStream).length} >>\nstream\n${contentStream}endstream\nendobj\n`
+  );
+
+  // Cross-reference table
+  const startXref = currentByteOffset;
+  let xref = `xref\n0 ${offsets.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) {
+    xref += `${offset.toString().padStart(10, "0")} 00000 n \n`;
+  }
+  const trailer = `trailer\n<< /Size ${offsets.length + 1} /Root 1 0 R >>\nstartxref\n${startXref}\n%%EOF\n`;
+  pushText(xref + trailer);
+
+  return new Blob(chunks as BlobPart[], { type: "application/pdf" });
+}
+

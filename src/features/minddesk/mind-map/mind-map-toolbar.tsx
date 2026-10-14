@@ -20,6 +20,7 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MindMapLayout, MindMapTheme } from "../types";
@@ -48,6 +49,7 @@ export interface MindMapToolbarProps {
   onAddTopic: () => void;
   onExportPng: () => void;
   onExportSvg: () => void;
+  onExportPdf: () => void;
   onExportJson: () => void;
   onImportJson: () => void;
 }
@@ -75,6 +77,7 @@ export function MindMapToolbar({
   onAddTopic,
   onExportPng,
   onExportSvg,
+  onExportPdf,
   onExportJson,
   onImportJson,
 }: MindMapToolbarProps) {
@@ -412,6 +415,17 @@ export function MindMapToolbar({
             >
               <FileCode className="h-3.5 w-3.5" />
               <span>Export SVG Vector</span>
+            </button>
+            <button
+              type="button"
+              className="text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors hover:bg-muted text-foreground flex items-center gap-2"
+              onClick={() => {
+                onExportPdf();
+                setActiveMenu(null);
+              }}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span>Export PDF Document</span>
             </button>
             <button
               type="button"

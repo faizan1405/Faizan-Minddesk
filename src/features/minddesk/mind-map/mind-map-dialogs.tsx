@@ -9,7 +9,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CheckSquare, FileText, Trash2, AlertTriangle, Link as LinkIcon } from "lucide-react";
+import { CheckSquare, FileText, Trash2, AlertTriangle, Link as LinkIcon, Globe } from "lucide-react";
 import type { TaskItem, NoteItem } from "../types";
 
 // 1. Note / Description Editor Dialog
@@ -70,7 +70,7 @@ export function NodeNoteDialog({
   );
 }
 
-// 2. Link Node to Task or Note Dialog
+// 2. Link Node to Task, Note or External URL Dialog
 export function NodeLinkDialog({
   open,
   nodeLabel,
@@ -78,9 +78,11 @@ export function NodeLinkDialog({
   notes,
   currentTaskId,
   currentNoteId,
+  currentExternalUrl,
   onClose,
   onLinkTask,
   onLinkNote,
+  onLinkUrl,
   onUnlink,
 }: {
   open: boolean;
@@ -89,13 +91,25 @@ export function NodeLinkDialog({
   notes: NoteItem[];
   currentTaskId?: string;
   currentNoteId?: string;
+  currentExternalUrl?: string;
   onClose: () => void;
   onLinkTask: (taskId: string) => void;
   onLinkNote: (noteId: string) => void;
+  onLinkUrl?: (url: string) => void;
   onUnlink: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<"task" | "note">("task");
+  const [activeTab, setActiveTab] = useState<"task" | "note" | "url">(
+    currentExternalUrl ? "url" : currentNoteId ? "note" : "task"
+  );
   const [search, setSearch] = useState("");
+  const [urlValue, setUrlValue] = useState(currentExternalUrl || "");
+
+  React.useEffect(() => {
+    setUrlValue(currentExternalUrl || "");
+    if (currentExternalUrl) {
+      setActiveTab("url");
+    }
+  }, [currentExternalUrl, open]);
 
   const filteredTasks = tasks.filter((t) =>
     t.title.toLowerCase().includes(search.toLowerCase())
@@ -103,6 +117,17 @@ export function NodeLinkDialog({
   const filteredNotes = notes.filter((n) =>
     n.title.toLowerCase().includes(search.toLowerCase())
   );
+
+  const handleSaveUrl = () => {
+    let cleanUrl = urlValue.trim();
+    if (cleanUrl && !cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+      cleanUrl = `https://${cleanUrl}`;
+    }
+    if (cleanUrl) {
+      onLinkUrl?.(cleanUrl);
+      onClose();
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -136,17 +161,58 @@ export function NodeLinkDialog({
           >
             Documents & Notes ({notes.length})
           </button>
+          <button
+            type="button"
+            className={`pb-2 transition-colors ${
+              activeTab === "url"
+                ? "border-b-2 border-primary text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setActiveTab("url")}
+          >
+            Web Link
+          </button>
         </div>
 
         <div className="py-2">
-          <input
-            placeholder={`Search ${activeTab === "task" ? "tasks" : "notes"}…`}
-            className="w-full h-8 px-2.5 rounded-lg border border-input text-xs outline-none focus:ring-1 focus:ring-primary"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          {activeTab === "url" ? (
+            <div className="space-y-3 py-1">
+              <p className="text-xs text-muted-foreground">
+                Attach an external web link, reference documentation, or website URL:
+              </p>
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
+                <input
+                  type="url"
+                  placeholder="https://example.com"
+                  aria-label="External URL link"
+                  className="w-full h-9 px-3 rounded-lg border border-input text-xs outline-none focus:ring-1 focus:ring-primary"
+                  value={urlValue}
+                  onChange={(e) => setUrlValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleSaveUrl();
+                    }
+                  }}
+                />
+              </div>
+              <div className="flex justify-end pt-2">
+                <Button size="sm" type="button" onClick={handleSaveUrl}>
+                  Save Link
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <input
+                placeholder={`Search ${activeTab === "task" ? "tasks" : "notes"}…`}
+                className="w-full h-8 px-2.5 rounded-lg border border-input text-xs outline-none focus:ring-1 focus:ring-primary"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
 
-          <div className="mt-2 max-h-56 overflow-y-auto divide-y rounded-lg border">
+              <div className="mt-2 max-h-56 overflow-y-auto divide-y rounded-lg border">
             {activeTab === "task" ? (
               filteredTasks.length === 0 ? (
                 <p className="p-3 text-xs text-muted-foreground text-center">
@@ -202,17 +268,20 @@ export function NodeLinkDialog({
                 </button>
               ))
             )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
 
         <DialogFooter className="flex justify-between items-center sm:justify-between">
-          {(currentTaskId || currentNoteId) && (
+          {(currentTaskId || currentNoteId || currentExternalUrl) && (
             <Button
               variant="ghost"
               size="sm"
               className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 text-xs"
               onClick={() => {
                 onUnlink();
+                setUrlValue("");
                 onClose();
               }}
             >
