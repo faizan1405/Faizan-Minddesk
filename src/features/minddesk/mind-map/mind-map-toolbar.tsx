@@ -379,6 +379,7 @@ export function MindMapToolbar({
           type="button"
           variant="ghost"
           size="sm"
+          data-testid="export-menu-trigger"
           className="h-8 gap-1.5 text-xs px-2 rounded-lg"
           onClick={() => setActiveMenu(activeMenu === "export" ? null : "export")}
         >

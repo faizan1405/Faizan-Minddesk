@@ -1292,6 +1292,16 @@ export function MindMapCanvas({
             onToggleCollapse: toggleBranchCollapse,
             onOpenNoteEditor: (nodeId) => setNoteDialogNodeId(nodeId),
             onOpenLinkModal: (nodeId) => setLinkDialogNodeId(nodeId),
+            onOpenIconPicker: (emoji) => {
+              setNodes((curr) => {
+                const next = curr.map((n) =>
+                  n.id === props.id ? { ...n, data: { ...n.data, icon: emoji } } : n
+                );
+                pushHistory(next, edges);
+                triggerSave(next, edges);
+                return next;
+              });
+            },
             setEditingNodeId,
           }}
         />

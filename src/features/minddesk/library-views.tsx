@@ -488,6 +488,7 @@ export function MapsView({ favoriteOnly = false, initialMapId }: { favoriteOnly?
           </div>
         </div>
         <MindMapCanvas
+          key={activeMap.id}
           nodes={activeMap.nodes}
           edges={activeMap.edges}
           theme={activeMap.theme ?? "calm"}

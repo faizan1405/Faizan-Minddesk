@@ -175,5 +175,5 @@ export async function ensureUserWorkspaceProvisioned(
       fullName: updatedProfile.fullName || fallbackName,
       avatarUrl: updatedProfile.avatarUrl ?? null,
     };
-  });
+  }, { maxWait: 15000, timeout: 30000 });
 }

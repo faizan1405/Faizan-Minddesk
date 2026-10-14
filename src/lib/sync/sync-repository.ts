@@ -1486,7 +1486,7 @@ async function executeSaveWorkspaceDeskData(
       conflictReconciled: reconciled.conflictReconciled,
       preferencesVersion: reconciled.preferencesVersion,
     };
-  }, { maxWait: 15000, timeout: 30000 });
+  }, { maxWait: 30000, timeout: 120000 });
 }
 
 export interface ImportPreviewResult {
@@ -1919,7 +1919,7 @@ export async function updateUserProfileSettingsSafely(
         },
         preferencesVersion: nextVersion,
       };
-    }, { maxWait: 15000, timeout: 30000 });
+    }, { maxWait: 30000, timeout: 120000 });
   } finally {
     releaseQueue();
     if (userSaveQueues.get(userId) === queuePromise) {
