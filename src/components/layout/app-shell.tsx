@@ -7,7 +7,6 @@ import { CommandPalette } from "@/components/layout/command-palette";
 import { QuickCaptureModal } from "@/components/layout/quick-capture-modal";
 import { ShortcutProvider } from "@/components/layout/shortcut-provider";
 import { MindDeskProvider, useDeskData } from "@/features/minddesk/store";
-import { SyncMigrationBanner } from "@/features/minddesk/components/sync-migration-banner";
 import { MindDeskContentSkeleton } from "@/components/layout/minddesk-skeleton";
 import { CalendarProvider } from "@/features/calendar/calendar-context";
 import { HabitsProvider } from "@/features/habits/context/habits-context";
@@ -132,7 +131,6 @@ export function AppShell({ children, user }: AppShellProps) {
 
                 <div className="flex min-h-screen min-w-0 flex-1 flex-col">
                   <AppHeader />
-                  <SyncMigrationBanner user={user} />
                   <main
                     id="main-content"
                     className="minddesk-scrollbar flex-1 overflow-y-auto pb-16 md:pb-0"

@@ -12,29 +12,62 @@ import {
 import { useTheme } from "next-themes";
 
 import { initialDeskData, initialTaskLists } from "./seed";
-import type { DeskData, TaskItem, TaskList } from "./types";
+import type { DeskData, NoteItem, TaskItem, TaskList } from "./types";
 import { sanitizeMapIdentifiers } from "./utils/mind-map-utils";
 import { useUIStore } from "@/stores/ui-store";
 import type { AuthUserSummary } from "@/types/domain";
 
 export const STORAGE_KEY = "minddesk-prototype-v1";
-const SYNCED_KEY_PREFIX = "minddesk_synced_user_";
-const PROTOTYPE_CLAIMED_BY_KEY = "minddesk_prototype_claimed_by";
-
-// Known legacy prototype demo IDs to avoid mistaking them for user-created local content
-const DEMO_ITEM_IDS = new Set([
-  "task-1", "task-2", "task-3", "task-4", "task-5", "task-6", "task-7", "task-8", "task-9", "task-10",
-  "note-1", "note-2", "note-3", "note-roadmap", "note-architecture",
-  "northstar", "fieldnotes", "launch", "personal",
-  "map-1",
-  "evt-standup-recurring", "evt-lunch", "evt-sprint-review", "evt-quarterly-planning", "evt-gym", "evt-tech-webinar",
-  "habit-water", "habit-reading", "habit-workout", "habit-plan-day",
-  "routine-morning", "routine-evening",
-  "list-skills", "list-projects", "list-routine", "list-goals",
-]);
 
 export function getUserStorageKey(userId: string): string {
   return `minddesk-user-${userId}`;
+}
+
+export function getPendingTombstonesKey(userId: string): string {
+  return `minddesk-tombstones-${userId}`;
+}
+
+interface PendingTombstonesData {
+  tasks?: string[];
+  notes?: string[];
+  maps?: string[];
+  taskLists?: string[];
+  projects?: string[];
+}
+
+function loadPendingTombstones(userId: string): PendingTombstonesData {
+  if (typeof window === "undefined" || !userId) return {};
+  try {
+    const raw = window.localStorage.getItem(getPendingTombstonesKey(userId));
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePendingTombstones(
+  userId: string,
+  tombstones: {
+    tasks: Set<string>;
+    notes: Set<string>;
+    maps: Set<string>;
+    taskLists: Set<string>;
+    projects: Set<string>;
+  }
+) {
+  if (typeof window === "undefined" || !userId) return;
+  try {
+    const payload: PendingTombstonesData = {
+      tasks: Array.from(tombstones.tasks),
+      notes: Array.from(tombstones.notes),
+      maps: Array.from(tombstones.maps),
+      taskLists: Array.from(tombstones.taskLists),
+      projects: Array.from(tombstones.projects),
+    };
+    window.localStorage.setItem(getPendingTombstonesKey(userId), JSON.stringify(payload));
+  } catch {
+    // Ignore quota errors
+  }
 }
 
 export interface DeskContextValue {
@@ -44,8 +77,8 @@ export interface DeskContextValue {
   update: (recipe: (current: DeskData) => DeskData) => void;
   selectedItem: string | null;
   setSelectedItem: (id: string | null) => void;
-  hasUnsyncedLocalData: boolean;
-  syncLocalDataToAccount: () => Promise<{ success: boolean; error?: string }>;
+  hasUnsyncedLocalData?: boolean;
+  syncLocalDataToAccount?: () => Promise<{ success: boolean; error?: string }>;
   refetchFromServer: () => Promise<void>;
   persistImmediately: () => Promise<void>;
   registerDeletedId: (type: "task" | "note" | "map" | "taskList" | "project", id: string) => void;
@@ -64,12 +97,41 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
   const existing = useContext(DeskContext);
   const { setTheme } = useTheme();
 
+  // Deletion tracking sets with user-scoped localStorage persistence across refreshes
+  const effectiveUserId = user?.id || "guest";
+  const initialTombstones = loadPendingTombstones(effectiveUserId);
+  const deletedTaskIdsRef = useRef<Set<string>>(new Set(initialTombstones.tasks || []));
+  const deletedNoteIdsRef = useRef<Set<string>>(new Set(initialTombstones.notes || []));
+  const deletedMapIdsRef = useRef<Set<string>>(new Set(initialTombstones.maps || []));
+  const deletedTaskListIdsRef = useRef<Set<string>>(new Set(initialTombstones.taskLists || []));
+  const deletedProjectIdsRef = useRef<Set<string>>(new Set(initialTombstones.projects || []));
+
   // If user is authenticated, start in authoritative loading state to prevent content flashing
-  const [data, setData] = useState<DeskData>(() => initialData || initialDeskData);
+  const [data, setData] = useState<DeskData>(() => {
+    if (initialData) return initialData;
+    if (typeof window !== "undefined" && !user?.id) {
+      try {
+        const cached = window.localStorage.getItem(getUserStorageKey("guest"));
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          const sanitized: DeskData = {
+            ...parsed,
+            notes: (parsed.notes || []).filter(
+              (n: NoteItem) => !initialTombstones.notes?.includes(n.id)
+            ),
+          };
+          return migrateDeskData(sanitized);
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return initialDeskData;
+  });
   const [isLoading, setIsLoading] = useState<boolean>(() => Boolean(user?.id));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
-  const [hasUnsyncedLocalData, setHasUnsyncedLocalData] = useState(false);
+  const isHydratedRef = useRef(false);
 
   // Synchronization refs to avoid race conditions & lost saves
   const latestDataRef = useRef<DeskData>(initialData || initialDeskData);
@@ -80,13 +142,6 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
   const isUserDirtyRef = useRef(false);
   const previousUserIdRef = useRef<string | null>(null);
 
-  // Deletion tracking sets for MySQL cross-tenant synchronization
-  const deletedTaskIdsRef = useRef<Set<string>>(new Set());
-  const deletedNoteIdsRef = useRef<Set<string>>(new Set());
-  const deletedMapIdsRef = useRef<Set<string>>(new Set());
-  const deletedTaskListIdsRef = useRef<Set<string>>(new Set());
-  const deletedProjectIdsRef = useRef<Set<string>>(new Set());
-
   // Sync latestDataRef whenever data changes
   latestDataRef.current = data;
 
@@ -96,14 +151,14 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
       if (previousUserIdRef.current && previousUserIdRef.current !== user.id) {
         isUserDirtyRef.current = false;
         lastSavedJsonRef.current = "";
-        deletedTaskIdsRef.current.clear();
-        deletedNoteIdsRef.current.clear();
-        deletedMapIdsRef.current.clear();
-        deletedTaskListIdsRef.current.clear();
-        deletedProjectIdsRef.current.clear();
+        const loaded = loadPendingTombstones(user.id);
+        deletedTaskIdsRef.current = new Set(loaded.tasks || []);
+        deletedNoteIdsRef.current = new Set(loaded.notes || []);
+        deletedMapIdsRef.current = new Set(loaded.maps || []);
+        deletedTaskListIdsRef.current = new Set(loaded.taskLists || []);
+        deletedProjectIdsRef.current = new Set(loaded.projects || []);
         setData(initialDeskData);
         latestDataRef.current = initialDeskData;
-        setHasUnsyncedLocalData(false);
         setIsLoading(true);
         setLoadError(null);
       }
@@ -179,6 +234,16 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
           deletedTaskListIds.forEach((id) => deletedTaskListIdsRef.current.delete(id));
           deletedProjectIds.forEach((id) => deletedProjectIdsRef.current.delete(id));
 
+          if (user?.id) {
+            savePendingTombstones(user.id, {
+              tasks: deletedTaskIdsRef.current,
+              notes: deletedNoteIdsRef.current,
+              maps: deletedMapIdsRef.current,
+              taskLists: deletedTaskListIdsRef.current,
+              projects: deletedProjectIdsRef.current,
+            });
+          }
+
           if (result?.preferencesVersion) {
             setData((curr) => ({
               ...curr,
@@ -253,8 +318,17 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
       else if (type === "taskList") deletedTaskListIdsRef.current.add(id);
       else if (type === "project") deletedProjectIdsRef.current.add(id);
       isUserDirtyRef.current = true;
+
+      const targetUserId = user?.id || "guest";
+      savePendingTombstones(targetUserId, {
+        tasks: deletedTaskIdsRef.current,
+        notes: deletedNoteIdsRef.current,
+        maps: deletedMapIdsRef.current,
+        taskLists: deletedTaskListIdsRef.current,
+        projects: deletedProjectIdsRef.current,
+      });
     },
-    []
+    [user?.id]
   );
 
   // 1. Initial Load: Hydrate authoritatively from MySQL
@@ -264,7 +338,27 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
     const currentUserId = user?.id;
 
     if (!currentUserId) {
-      // Unauthenticated / Guest preview mode: initialize clean empty workspace
+      // Unauthenticated / Guest preview mode: load from guest offline cache if present
+      if (typeof window !== "undefined") {
+        const cached = window.localStorage.getItem(getUserStorageKey("guest"));
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            const sanitized: DeskData = {
+              ...parsed,
+              notes: (parsed.notes || []).filter(
+                (n: NoteItem) => !deletedNoteIdsRef.current.has(n.id)
+              ),
+            };
+            const migrated = migrateDeskData(sanitized);
+            setData(migrated);
+            latestDataRef.current = migrated;
+          } catch {
+            // Ignore corrupted guest cache
+          }
+        }
+      }
+      isHydratedRef.current = true;
       setIsLoading(false);
       setLoadError(null);
       return;
@@ -295,8 +389,27 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
 
       const payload = await res.json();
       if (payload?.success && payload?.data) {
-        const serverData: DeskData = payload.data;
-        const migrated = migrateDeskData(serverData);
+        const rawServerData: DeskData = payload.data;
+        // Filter out any locally pending tombstones to ensure zero resurrection of deleted items
+        const sanitizedServerData: DeskData = {
+          ...rawServerData,
+          notes: (rawServerData.notes || []).filter(
+            (n) => !deletedNoteIdsRef.current.has(n.id)
+          ),
+          tasks: (rawServerData.tasks || []).filter(
+            (t) => !deletedTaskIdsRef.current.has(t.id)
+          ),
+          projects: (rawServerData.projects || []).filter(
+            (p) => !deletedProjectIdsRef.current.has(p.id)
+          ),
+          maps: (rawServerData.maps || []).filter(
+            (m) => !deletedMapIdsRef.current.has(m.id)
+          ),
+          taskLists: (rawServerData.taskLists || []).filter(
+            (l) => !deletedTaskListIdsRef.current.has(l.id)
+          ),
+        };
+        const migrated = migrateDeskData(sanitizedServerData);
 
         setData(migrated);
         latestDataRef.current = migrated;
@@ -309,29 +422,15 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
           JSON.stringify(migrated)
         );
 
-        // Check if user has legacy prototype local data that needs migration
-        const claimedBy = window.localStorage.getItem(PROTOTYPE_CLAIMED_BY_KEY);
-        const syncKey = `${SYNCED_KEY_PREFIX}${currentUserId}`;
-        const alreadySynced = window.localStorage.getItem(syncKey) === "true";
-
-        if (!alreadySynced && (!claimedBy || claimedBy === currentUserId)) {
-          const rawLocal = window.localStorage.getItem(STORAGE_KEY);
-          if (rawLocal) {
-            try {
-              const parsed = JSON.parse(rawLocal);
-              const genuineUserTasks = (parsed.tasks || []).filter(
-                (t: { id: string }) => !DEMO_ITEM_IDS.has(t.id)
-              );
-              const genuineUserNotes = (parsed.notes || []).filter(
-                (n: { id: string }) => !DEMO_ITEM_IDS.has(n.id)
-              );
-              if (genuineUserTasks.length > 0 || genuineUserNotes.length > 0) {
-                setHasUnsyncedLocalData(true);
-              }
-            } catch {
-              // Ignore parse error
-            }
-          }
+        // If there are unconfirmed pending deletions from a previous crash/refresh, flush them to server
+        const hasPendingDeletions =
+          deletedNoteIdsRef.current.size > 0 ||
+          deletedTaskIdsRef.current.size > 0 ||
+          deletedMapIdsRef.current.size > 0 ||
+          deletedTaskListIdsRef.current.size > 0 ||
+          deletedProjectIdsRef.current.size > 0;
+        if (hasPendingDeletions) {
+          persistToServer(migrated);
         }
       } else {
         throw new Error("Invalid response format from server");
@@ -355,9 +454,10 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
         useUIStore.getState().setSaveStatus("error");
       }
     } finally {
+      isHydratedRef.current = true;
       setIsLoading(false);
     }
-  }, [existing, user?.id]);
+  }, [existing, persistToServer, user?.id]);
 
   useEffect(() => {
     loadWorkspaceData();
@@ -385,15 +485,11 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
     document.documentElement.classList.toggle("dark", data.theme === "dark");
     setTheme?.(data.theme);
 
-    if (!isLoading) {
+    if (!isLoading && isHydratedRef.current) {
       // Cache user-scoped state locally
       try {
-        if (user?.id) {
-          window.localStorage.setItem(
-            getUserStorageKey(user.id),
-            JSON.stringify(data)
-          );
-        }
+        const targetKey = getUserStorageKey(user?.id || "guest");
+        window.localStorage.setItem(targetKey, JSON.stringify(data));
       } catch {
         // Ignore quota errors
       }
@@ -429,15 +525,34 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
       if (res.ok) {
         const payload = await res.json();
         if (payload?.success && payload?.data) {
-          const serverJson = JSON.stringify(payload.data);
-          if (serverJson !== lastSavedJsonRef.current) {
-            const migrated = migrateDeskData(payload.data);
+          const rawServer = payload.data;
+          const sanitizedServerData: DeskData = {
+            ...rawServer,
+            notes: (rawServer.notes || []).filter(
+              (n: { id: string }) => !deletedNoteIdsRef.current.has(n.id)
+            ),
+            tasks: (rawServer.tasks || []).filter(
+              (t: { id: string }) => !deletedTaskIdsRef.current.has(t.id)
+            ),
+            projects: (rawServer.projects || []).filter(
+              (p: { id: string }) => !deletedProjectIdsRef.current.has(p.id)
+            ),
+            maps: (rawServer.maps || []).filter(
+              (m: { id: string }) => !deletedMapIdsRef.current.has(m.id)
+            ),
+            taskLists: (rawServer.taskLists || []).filter(
+              (l: { id: string }) => !deletedTaskListIdsRef.current.has(l.id)
+            ),
+          };
+          const migrated = migrateDeskData(sanitizedServerData);
+          const sanitizedJson = JSON.stringify(migrated);
+          if (sanitizedJson !== lastSavedJsonRef.current) {
             setData(migrated);
             latestDataRef.current = migrated;
-            lastSavedJsonRef.current = serverJson;
+            lastSavedJsonRef.current = sanitizedJson;
             window.localStorage.setItem(
               getUserStorageKey(user.id),
-              serverJson
+              sanitizedJson
             );
             useUIStore.getState().setSaveStatus("saved");
           }
@@ -488,52 +603,10 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
     };
   }, [persistImmediately, persistToServer, refetchFromServer, user?.id]);
 
-  // 5. Safe Migration of Local Prototype Data to Cloud Account
+  // Decommissioned: Safe no-op kept for interface compatibility
   const syncLocalDataToAccount = useCallback(async () => {
-    if (!user?.id) {
-      return { success: false, error: "Authentication required." };
-    }
-
-    try {
-      useUIStore.getState().setSaveStatus("saving");
-      const current = latestDataRef.current;
-      const res = await fetch("/api/minddesk/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ localData: current, dryRun: false }),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const result = await res.json();
-      if (result?.success) {
-        window.localStorage.setItem(
-          `${SYNCED_KEY_PREFIX}${user.id}`,
-          "true"
-        );
-        window.localStorage.setItem(PROTOTYPE_CLAIMED_BY_KEY, user.id);
-        window.localStorage.setItem(
-          getUserStorageKey(user.id),
-          JSON.stringify(current)
-        );
-        setHasUnsyncedLocalData(false);
-        lastSavedJsonRef.current = JSON.stringify(current);
-        useUIStore.getState().setSaveStatus("saved");
-        return { success: true };
-      } else {
-        useUIStore.getState().setSaveStatus("error");
-        return { success: false, error: result?.error || "Import failed." };
-      }
-    } catch (err: unknown) {
-      useUIStore.getState().setSaveStatus("error");
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Sync failed.",
-      };
-    }
-  }, [user?.id]);
+    return { success: true };
+  }, []);
 
   if (existing) {
     return <>{children}</>;
@@ -548,7 +621,7 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
         update,
         selectedItem,
         setSelectedItem,
-        hasUnsyncedLocalData,
+        hasUnsyncedLocalData: false,
         syncLocalDataToAccount,
         refetchFromServer,
         persistImmediately,
