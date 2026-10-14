@@ -89,7 +89,7 @@ export function getSampleTestHabits(): Habit[] {
       startDate,
       schedule: {
         frequency: "specific_days",
-        daysOfWeek: [1, 2, 4, 5, 6],
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
       },
       preferredTime: "07:30",
       reminderMinutes: 30,

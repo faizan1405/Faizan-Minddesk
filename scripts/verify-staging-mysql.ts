@@ -8,9 +8,17 @@
  *    foreign-key constraints, row locking, and anti-resurrection tombstones.
  */
 
-import { execSync, fork } from "child_process";
+import { execSync } from "child_process";
 import path from "path";
+import fs from "fs";
+import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
+
+// Load git-ignored .env.staging if present
+if (fs.existsSync(".env.staging")) {
+  dotenv.config({ path: ".env.staging" });
+}
+
 
 // Validate staging target before anything else
 function validateStagingUrl(url: string | undefined): string {
@@ -100,6 +108,26 @@ export async function runStagingVerification(stagingUrl: string) {
       "SHOW VARIABLES LIKE 'character_set_database'"
     )) as Array<{ Variable_name: string; Value: string }>;
     console.log(`✓ Database Character Set: ${charsetResult[0]?.Value || "utf8mb4"}`);
+
+    // 1b. Schema Verification & Initialization for Empty Staging Database
+    console.log("\nStep 1b: Checking Schema Existence on Staging Database...");
+    const existingTables = (await prisma.$queryRawUnsafe(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"
+    )) as Array<{ table_name?: string; TABLE_NAME?: string }>;
+
+    if (!existingTables || existingTables.length === 0) {
+      console.log("[SCHEMA] Staging database is empty. Pushing Prisma schema to staging database...");
+      execSync("npx prisma db push --skip-generate --accept-data-loss", {
+        env: {
+          ...process.env,
+          DATABASE_URL: verifiedUrl,
+        },
+        stdio: "inherit",
+      });
+      console.log("✓ Prisma schema successfully pushed to staging database.");
+    } else {
+      console.log(`✓ Staging database already initialized with ${existingTables.length} tables.`);
+    }
 
     // 2. Foreign-Key Constraint Verification
     console.log("\nStep 2: Verifying Foreign-Key Constraints & Unlinking...");
@@ -398,8 +426,12 @@ export async function runStagingVerification(stagingUrl: string) {
   }
 }
 
-// Allow direct execution via CLI
-if (require.main === module) {
+// Allow direct execution via CLI (supports tsx, ts-node, and direct execution)
+const isDirectExecution =
+  (typeof require !== "undefined" && require.main === module) ||
+  Boolean(process.argv[1] && path.resolve(process.argv[1]).includes("verify-staging-mysql"));
+
+if (isDirectExecution) {
   const url = process.env.STAGING_DATABASE_URL;
   if (!url) {
     console.error("ERROR: STAGING_DATABASE_URL is not set.");
@@ -412,3 +444,4 @@ if (require.main === module) {
       process.exit(1);
     });
 }
+

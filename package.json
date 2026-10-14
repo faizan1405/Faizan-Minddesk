@@ -17,7 +17,9 @@
     "db:validate": "prisma validate",
     "db:generate": "prisma generate",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:push": "prisma db push"
+    "db:push": "prisma db push",
+    "staging:verify": "powershell -ExecutionPolicy Bypass -File scripts/setup-staging-password.ps1",
+    "test:staging": "tsx scripts/verify-staging-mysql.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
