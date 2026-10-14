@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import type { SuggestionKeyDownProps, SuggestionProps } from "@tiptap/suggestion";
-import { ChevronLeft } from "lucide-react";
+import { BookOpen, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import { useDeskData } from "../store";
@@ -31,6 +31,7 @@ interface NoteEditorProps {
   onNavigateToNote: (noteId: string) => void;
   onDuplicateNote: () => void;
   onDeleteNote: () => void;
+  onToggleMobileSidebar?: () => void;
 }
 
 export function NoteEditor({
@@ -40,6 +41,7 @@ export function NoteEditor({
   onNavigateToNote,
   onDuplicateNote,
   onDeleteNote,
+  onToggleMobileSidebar,
 }: NoteEditorProps) {
   const { data, update, persistImmediately } = useDeskData();
   const serverSaveStatus = useUIStore((s) => s.saveStatus);
@@ -302,10 +304,22 @@ export function NoteEditor({
             void persistImmediately();
             onBack();
           }}
-          className="gap-1.5 -ml-2 text-xs font-medium"
+          className="gap-1.5 -ml-2 text-xs font-medium cursor-pointer"
         >
           <ChevronLeft className="size-4" /> All notes
         </Button>
+
+        {onToggleMobileSidebar && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToggleMobileSidebar}
+            className="lg:hidden gap-1.5 text-xs font-medium cursor-pointer shadow-2xs"
+          >
+            <BookOpen className="size-3.5 text-primary" />
+            <span>Documents</span>
+          </Button>
+        )}
       </div>
 
       {/* Document Header (Cover, Icon, Title, Meta) */}

@@ -88,3 +88,51 @@ export const EMOJI_OPTIONS = [
   "🧠", "🌿", "⭐", "🔥", "📌", "🎨", "📂", "🔍",
   "✨", "🏷️", "💼", "🕊️", "☕", "💻", "🌊", "🌙"
 ];
+
+export type ProjectFilterValue = "all" | "unassigned" | string;
+
+export function getProjectHueColor(hue?: string): string {
+  switch (hue) {
+    case "violet":
+      return "#8b5cf6";
+    case "mint":
+      return "#10b981";
+    case "amber":
+      return "#f59e0b";
+    case "blue":
+      return "#3b82f6";
+    default:
+      return "#6366f1";
+  }
+}
+
+export function filterNotesByProject(
+  notes: NoteItem[],
+  filter: ProjectFilterValue,
+  projects: ProjectItem[]
+): NoteItem[] {
+  if (filter === "all") return notes;
+  if (filter === "unassigned") {
+    const validProjectIds = new Set(projects.map((p) => p.id));
+    return notes.filter((n) => !n.projectId || !validProjectIds.has(n.projectId));
+  }
+  return notes.filter((n) => n.projectId === filter);
+}
+
+export function getNoteAncestors(note: NoteItem, allNotes: NoteItem[]): NoteItem[] {
+  const ancestors: NoteItem[] = [];
+  const visited = new Set<string>([note.id]);
+  let currentParentId = note.parentId;
+
+  while (currentParentId && !visited.has(currentParentId)) {
+    visited.add(currentParentId);
+    const parent = allNotes.find((n) => n.id === currentParentId);
+    if (!parent) break;
+    ancestors.unshift(parent);
+    currentParentId = parent.parentId;
+    if (ancestors.length > 10) break;
+  }
+
+  return ancestors;
+}
+
