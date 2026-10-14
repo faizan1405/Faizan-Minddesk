@@ -130,9 +130,56 @@ export function getNoteAncestors(note: NoteItem, allNotes: NoteItem[]): NoteItem
     if (!parent) break;
     ancestors.unshift(parent);
     currentParentId = parent.parentId;
-    if (ancestors.length > 10) break;
+    if (ancestors.length > 20) break;
   }
 
   return ancestors;
+}
+
+export function getProjectOverviewId(projectId: string): string {
+  return `project-overview-${projectId}`;
+}
+
+export function isProjectOverviewNote(noteId: string): boolean {
+  return typeof noteId === "string" && noteId.startsWith("project-overview-");
+}
+
+export function getAllDescendantIds(noteId: string, allNotes: NoteItem[]): string[] {
+  const descendants: string[] = [];
+  const queue = [noteId];
+  const visited = new Set<string>([noteId]);
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    for (const note of allNotes) {
+      if (note.parentId === currentId && !visited.has(note.id)) {
+        visited.add(note.id);
+        descendants.push(note.id);
+        queue.push(note.id);
+      }
+    }
+  }
+
+  return descendants;
+}
+
+export function isDescendantOf(
+  candidateId: string,
+  potentialAncestorId: string,
+  allNotes: NoteItem[]
+): boolean {
+  if (candidateId === potentialAncestorId) return true;
+  const visited = new Set<string>();
+  let currentId: string | null | undefined = candidateId;
+
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId);
+    const item = allNotes.find((n) => n.id === currentId);
+    if (!item?.parentId) return false;
+    if (item.parentId === potentialAncestorId) return true;
+    currentId = item.parentId;
+  }
+
+  return false;
 }
 

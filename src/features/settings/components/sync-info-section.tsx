@@ -24,11 +24,7 @@ export function SyncInfoSection({ syncInfo }: SyncInfoSectionProps) {
 
   try {
     const store = useDeskData();
-    syncStatus = store.isLoading
-      ? "loading"
-      : store.hasUnsyncedLocalData
-        ? "saving"
-        : "synced";
+    syncStatus = store.isLoading ? "loading" : "synced";
     forceSync = store.persistImmediately || null;
   } catch {
     // Graceful fallback outside store
@@ -98,11 +94,11 @@ export function SyncInfoSection({ syncInfo }: SyncInfoSectionProps) {
               variant="outline"
               size="sm"
               onClick={handleManualSync}
-              disabled={isManualSyncing || syncStatus === "saving"}
+              disabled={isManualSyncing || syncStatus === "loading"}
               className="rounded-xl text-xs gap-1.5 shrink-0"
             >
               <RefreshCw
-                className={`size-3.5 ${isManualSyncing || syncStatus === "saving" ? "animate-spin" : ""}`}
+                className={`size-3.5 ${isManualSyncing || syncStatus === "loading" ? "animate-spin" : ""}`}
               />
               {isManualSyncing ? "Syncing..." : "Sync Now"}
             </Button>
@@ -114,7 +110,7 @@ export function SyncInfoSection({ syncInfo }: SyncInfoSectionProps) {
             <span className="text-muted-foreground text-[11px] block">Sync State</span>
             <span className="text-foreground font-semibold capitalize flex items-center gap-1.5 mt-0.5">
               <CheckCircle2 className="size-3.5 text-emerald-500" />
-              {syncStatus === "saving" ? "Saving changes..." : "Synchronized"}
+              {isManualSyncing ? "Saving changes..." : syncStatus === "loading" ? "Loading..." : "Synchronized"}
             </span>
           </div>
 

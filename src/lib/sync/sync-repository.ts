@@ -218,23 +218,29 @@ export async function getWorkspaceDeskData(
     };
   });
 
-  // 5. Map Notes
-  const notes: NoteItem[] = dbNotes.map((n) => {
-    const meta = (n.contentJson as NoteMetadataJson) || {};
-    return {
-      id: n.id,
-      title: n.title,
-      excerpt:
-        meta.excerpt || (n.contentText ? n.contentText.slice(0, 160) : ""),
-      content: meta.html !== undefined ? meta.html : n.contentText || "",
-      icon: meta.icon || "📝",
-      updated: n.updatedAt.toISOString(),
-      projectId: n.projectId || undefined,
-      starred: n.isPinned,
-      parentId: n.parentNoteId,
-      coverImage: meta.coverImage ?? null,
-    };
-  });
+  // 5. Map Notes (respect tombstone exclusions)
+  const profilePrefs =
+    (dbProfile?.preferences as unknown as ProfilePreferencesJson | null) || {};
+  const tombstonedNotes = new Set(profilePrefs._tombstones?.notes || []);
+
+  const notes: NoteItem[] = dbNotes
+    .filter((n) => !tombstonedNotes.has(n.id))
+    .map((n) => {
+      const meta = (n.contentJson as NoteMetadataJson) || {};
+      return {
+        id: n.id,
+        title: n.title,
+        excerpt:
+          meta.excerpt || (n.contentText ? n.contentText.slice(0, 160) : ""),
+        content: meta.html !== undefined ? meta.html : n.contentText || "",
+        icon: meta.icon || "📝",
+        updated: n.updatedAt.toISOString(),
+        projectId: n.projectId || undefined,
+        starred: n.isPinned,
+        parentId: n.parentNoteId,
+        coverImage: meta.coverImage ?? null,
+      };
+    });
 
   // 6. Map Mind Maps
   const maps: MindMapItem[] = dbMindMaps.map((m) => {
@@ -1217,11 +1223,14 @@ async function executeSaveWorkspaceDeskData(
         });
       }
 
-      // Pass 2: Link parentNoteId hierarchy safely once all note IDs exist
+      // Pass 2: Link parentNoteId hierarchy safely once all note IDs exist (skipping any deleted notes)
       for (const note of data.notes) {
-        if (!note?.id) continue;
+        if (!note?.id || deletedNoteIdsSet.has(note.id)) continue;
         const parentId =
-          note.parentId && validNoteIds.has(note.parentId) && note.parentId !== note.id
+          note.parentId &&
+          validNoteIds.has(note.parentId) &&
+          !deletedNoteIdsSet.has(note.parentId) &&
+          note.parentId !== note.id
             ? note.parentId
             : null;
 
@@ -1242,11 +1251,59 @@ async function executeSaveWorkspaceDeskData(
 
     // Handle deleted notes if specified or tombstoned
     if (deletedNoteIdsSet.size > 0) {
+      const deletedNoteIds = Array.from(deletedNoteIdsSet);
+
+      // 1. Unlink child notes in MySQL first to prevent self-referencing foreign key constraint failures
+      await tx.note.updateMany({
+        where: {
+          workspaceId,
+          userId: actor.id,
+          parentNoteId: { in: deletedNoteIds },
+        },
+        data: { parentNoteId: null },
+      });
+
+      // 2. Unlink any MindMapNode references
+      await tx.mindMapNode.updateMany({
+        where: {
+          workspaceId,
+          userId: actor.id,
+          linkedNoteId: { in: deletedNoteIds },
+        },
+        data: { linkedNoteId: null },
+      });
+
+      // 3. Delete any NoteVersions for these notes if noteVersion model exists
+      if ("noteVersion" in tx && typeof (tx as unknown as Record<string, { deleteMany: (args: unknown) => Promise<unknown> }>).noteVersion?.deleteMany === "function") {
+        await (tx as unknown as Record<string, { deleteMany: (args: unknown) => Promise<unknown> }>).noteVersion.deleteMany({
+          where: {
+            workspaceId,
+            userId: actor.id,
+            noteId: { in: deletedNoteIds },
+          },
+        });
+      }
+
+      // 4. Delete any EntityLinks referencing these notes if entityLink model exists
+      if ("entityLink" in tx && typeof (tx as unknown as Record<string, { deleteMany: (args: unknown) => Promise<unknown> }>).entityLink?.deleteMany === "function") {
+        await (tx as unknown as Record<string, { deleteMany: (args: unknown) => Promise<unknown> }>).entityLink.deleteMany({
+          where: {
+            workspaceId,
+            userId: actor.id,
+            OR: [
+              { sourceType: "note", sourceId: { in: deletedNoteIds } },
+              { targetType: "note", targetId: { in: deletedNoteIds } },
+            ],
+          },
+        });
+      }
+
+      // 5. Delete the notes safely from MySQL
       await tx.note.deleteMany({
         where: {
           workspaceId,
           userId: actor.id,
-          id: { in: Array.from(deletedNoteIdsSet) },
+          id: { in: deletedNoteIds },
         },
       });
     }

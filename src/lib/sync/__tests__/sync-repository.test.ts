@@ -172,6 +172,8 @@ export function createInMemorySyncPrisma(): PrismaClient {
     taskList: makeModel(taskLists),
     task: makeModel(tasks),
     note: makeModel(notes),
+    noteVersion: makeModel(new Map()),
+    entityLink: makeModel(new Map()),
     mindMap: makeModel(mindMaps),
     mindMapNode: makeModel(mindMapNodes),
     mindMapEdge: makeModel(mindMapEdges),
@@ -842,5 +844,91 @@ describe("Hostinger MySQL Sync Repository (Cross-Device & Persistence)", () => {
     expect(rehydrated.dailyPlans?.["2026-10-13"]).toBeDefined();
     expect(rehydrated.dailyPlans?.["2026-10-14"]).toBeDefined();
     expect(rehydrated.dailyPlans?.["2026-10-20"]).toBeDefined();
+  });
+
+  it("deletes notes with self-referencing foreign keys and preserves tombstone exclusion", async () => {
+    const db = createInMemorySyncPrisma();
+    const actor = { id: "user-del-test", email: "del@example.com" };
+
+    const workspace = await db.workspace.create({
+      data: { id: "ws-del", name: "Delete Test WS", ownerId: actor.id, isPersonal: true },
+    });
+    await db.profile.create({
+      data: {
+        id: actor.id,
+        email: actor.email,
+        defaultWorkspaceId: workspace.id,
+        preferences: {},
+      },
+    });
+
+    // Save initial parent and child notes
+    await saveWorkspaceDeskData(db, actor, workspace.id, {
+      notes: [
+        {
+          id: "note-parent-1",
+          title: "Architecture Specs",
+          excerpt: "Specs",
+          content: "Specs content",
+          icon: "📄",
+          updated: "Just now",
+          starred: false,
+        },
+        {
+          id: "note-child-1",
+          title: "Database Schema",
+          excerpt: "Schema",
+          content: "Schema content",
+          icon: "📄",
+          updated: "Just now",
+          starred: false,
+          parentId: "note-parent-1",
+        },
+      ],
+    });
+
+    // Verify both were saved
+    const initialDesk = await getWorkspaceDeskData(db, actor, workspace.id);
+    expect(initialDesk.notes.length).toBe(2);
+
+    // Delete note-parent-1 with tombstone tracking, reparenting child to null
+    await saveWorkspaceDeskData(
+      db,
+      actor,
+      workspace.id,
+      {
+        notes: [
+          {
+            id: "note-child-1",
+            title: "Database Schema",
+            excerpt: "Schema",
+            content: "Schema content",
+            icon: "📄",
+            updated: "Just now",
+            starred: false,
+            parentId: null,
+          },
+        ],
+      },
+      {
+        deletedNoteIds: ["note-parent-1"],
+      }
+    );
+
+    // Query desk data after deletion
+    const afterDeleteDesk = await getWorkspaceDeskData(db, actor, workspace.id);
+    expect(afterDeleteDesk.notes.length).toBe(1);
+    expect(afterDeleteDesk.notes[0].id).toBe("note-child-1");
+    expect(afterDeleteDesk.notes[0].parentId).toBeNull();
+
+    // Verify parent is recorded in profile _tombstones
+    const profile = await db.profile.findUnique({ where: { id: actor.id } });
+    const prefs = profile?.preferences as Record<string, unknown>;
+    const tombstones = prefs?._tombstones as { notes?: string[] };
+    expect(tombstones.notes).toContain("note-parent-1");
+
+    // Even if parent note still existed in db table, getWorkspaceDeskData filters it out
+    const rechecked = await getWorkspaceDeskData(db, actor, workspace.id);
+    expect(rechecked.notes.some((n) => n.id === "note-parent-1")).toBe(false);
   });
 });
