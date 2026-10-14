@@ -37,7 +37,7 @@ export function isHabitScheduledOnDate(
   habit: Habit,
   dateStr: string
 ): boolean {
-  if (!habit || habit.isArchived || !habit.startDate || !habit.schedule || !dateStr) return false;
+  if (habit.isArchived) return false;
 
   const targetDate = parseISO(dateStr);
   const startDate = parseISO(habit.startDate);
@@ -127,19 +127,6 @@ export function calculateHabitStreak(
   const completionMap = new Map<string, HabitCompletion>();
   for (const c of habitCompletions) {
     completionMap.set(c.date, c);
-  }
-
-  if (!habit || !habit.startDate || !refDateStr) {
-    return {
-      currentStreak: 0,
-      longestStreak: 0,
-      totalCompletions: 0,
-      completionRate: 0,
-      weeklyConsistency: 0,
-      monthlyConsistency: 0,
-      totalScheduled: 0,
-      totalSkipped: 0,
-    };
   }
 
   const todayStr = refDateStr;
