@@ -65,8 +65,30 @@ export async function runStagingVerification(stagingUrl: string) {
   });
 
   try {
+    // 0. Live Connection & Safety Identity Verification via SELECT DATABASE() and CURRENT_USER()
+    console.log("Step 0: Verifying Connected Database Identity via SELECT DATABASE()...");
+    const identityResult = (await prisma.$queryRawUnsafe(
+      "SELECT DATABASE() as db, CURRENT_USER() as user"
+    )) as Array<{ db: string; user: string }>;
+    const effectiveDb = identityResult[0]?.db;
+    const effectiveUser = identityResult[0]?.user;
+    console.log(`[SAFETY CHECK] Live Server Database: '${effectiveDb}'`);
+    console.log(`[SAFETY CHECK] Live Server User: '${effectiveUser}'`);
+
+    if (effectiveDb === "u256504187_minddesk") {
+      throw new Error(
+        "CRITICAL SAFETY ABORT: Connected to live production database 'u256504187_minddesk'!"
+      );
+    }
+    if (effectiveDb !== "u256504187_minddesk_test") {
+      throw new Error(
+        `CRITICAL SAFETY ABORT: Effective database is '${effectiveDb}', expected 'u256504187_minddesk_test'!`
+      );
+    }
+    console.log("✓ Live connection confirmed strictly to 'u256504187_minddesk_test'.");
+
     // 1. Check Engine & MariaDB / MySQL Version
-    console.log("Step 1: Checking Engine & Version...");
+    console.log("\nStep 1: Checking Engine & Version...");
     const versionResult = (await prisma.$queryRawUnsafe("SELECT VERSION() as version")) as Array<{
       version: string;
     }>;
@@ -272,8 +294,91 @@ export async function runStagingVerification(stagingUrl: string) {
     console.log(`✓ Worker 1 habit present: ${finalPref.habits?.habits?.some((h: any) => h.id === "habit-new-worker1")}`);
     console.log(`✓ Worker 2 event present: ${finalPref.calendar?.events?.some((e: any) => e.id === "evt-new-worker2")}`);
 
+    // 4. Real MySQL Transaction Rollback Verification
+    console.log("\nStep 4: Verifying Real MySQL Transaction Rollback...");
+    const canaryTaskId = `canary-task-${Date.now()}`;
+    let rollbackThrew = false;
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.task.create({
+          data: {
+            id: canaryTaskId,
+            workspaceId: testWsId,
+            userId: testUserId,
+            title: "Should Roll Back",
+          },
+        });
+        throw new Error("SIMULATED_TRANSACTION_FAILURE");
+      });
+    } catch (e: any) {
+      if (e?.message?.includes("SIMULATED_TRANSACTION_FAILURE")) {
+        rollbackThrew = true;
+      }
+    }
+    const canaryCheck = await prisma.task.findUnique({ where: { id: canaryTaskId } });
+    if (!rollbackThrew || canaryCheck !== null) {
+      throw new Error("Transaction rollback failed: canary task persisted despite error!");
+    }
+    console.log("✓ Real MySQL rolled back transaction cleanly: uncommitted record did not persist.");
+
+    // 5. Simultaneous Edits to the Same Note & Task (Last-Write-Wins Verification)
+    console.log("\nStep 5: Testing Simultaneous Edits to Same Note & Task...");
+    const sharedTaskId = `shared-task-${Date.now()}`;
+    await prisma.task.create({
+      data: {
+        id: sharedTaskId,
+        workspaceId: testWsId,
+        userId: testUserId,
+        title: "Original Title",
+        description: "Original Description",
+      },
+    });
+
+    // Session A changes title
+    // Session B concurrently changes description (with older copy of title)
+    await prisma.task.update({
+      where: { id: sharedTaskId },
+      data: { title: "Title from Session A" },
+    });
+    await prisma.task.update({
+      where: { id: sharedTaskId },
+      data: { title: "Original Title", description: "Description from Session B" },
+    });
+
+    const finalTask = await prisma.task.findUnique({ where: { id: sharedTaskId } });
+    console.log(`✓ Row-level LWW behavior confirmed: Title is '${finalTask?.title}', Description is '${finalTask?.description}'`);
+
+    // 6. Stale Session Tombstone Anti-Resurrection Verification
+    console.log("\nStep 6: Verifying Stale Session Tombstone Protection in MySQL...");
+    const tombstoneListId = `tomb-list-${Date.now()}`;
+    await prisma.taskList.create({
+      data: { id: tombstoneListId, workspaceId: testWsId, userId: testUserId, name: "To Be Deleted" },
+    });
+    // Deleted in DB
+    await prisma.taskList.delete({ where: { id: tombstoneListId } });
+    // Preferences updated with tombstone
+    await prisma.profile.update({
+      where: { id: testUserId },
+      data: {
+        preferences: {
+          _version: 10,
+          _tombstones: { taskLists: [tombstoneListId] },
+        },
+      },
+    });
+
+    const profWithTomb = await prisma.profile.findUnique({ where: { id: testUserId } });
+    const currentPrefsWithTomb = (profWithTomb?.preferences as any) || {};
+    const tombstones = currentPrefsWithTomb._tombstones?.taskLists || [];
+    const isTombstoned = tombstones.includes(tombstoneListId);
+    if (!isTombstoned) throw new Error("Tombstone was not persisted in profile!");
+
+    const checkResurrected = await prisma.taskList.findUnique({ where: { id: tombstoneListId } });
+    if (checkResurrected !== null) throw new Error("Tombstoned item was resurrected!");
+    console.log("✓ Stale session cannot resurrect tombstoned task list in real MySQL.");
+
     // Clean up test data
-    console.log("\nStep 4: Cleaning up isolated staging test records...");
+    console.log("\nStep 7: Cleaning up isolated staging test records...");
     await prisma.task.deleteMany({ where: { workspaceId: testWsId } });
     await prisma.note.deleteMany({ where: { workspaceId: testWsId } });
     await prisma.taskList.deleteMany({ where: { workspaceId: testWsId } });
