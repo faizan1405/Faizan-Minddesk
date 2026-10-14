@@ -41,6 +41,7 @@ export interface UserProfileData {
   workspaceName: string;
   provider: string;
   preferences: UserSettingsPreferences;
+  preferencesVersion?: number;
 }
 
 export interface SessionInfo {

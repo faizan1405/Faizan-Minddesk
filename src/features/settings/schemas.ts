@@ -73,6 +73,7 @@ export const updateProfileSchema = z.object({
       notifications: notificationSettingsSchema.partial().optional(),
     })
     .optional(),
+  preferencesVersion: z.number().int().min(0).optional(),
 });
 
 export type UpdateProfileSchemaInput = z.infer<typeof updateProfileSchema>;

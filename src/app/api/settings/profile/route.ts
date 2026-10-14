@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { getVerifiedUser } from "@/lib/auth/server";
 import { isDatabaseConfigured } from "@/lib/auth/env";
 import { prisma } from "@/lib/db/prisma";
@@ -11,6 +10,7 @@ import {
   type SettingsApiResponse,
   type UserSettingsPreferences,
 } from "@/features/settings/types";
+import { updateUserProfileSettingsSafely } from "@/lib/sync/sync-repository";
 
 function mergePreferences(raw: unknown): UserSettingsPreferences {
   if (!raw || typeof raw !== "object") {
@@ -31,18 +31,58 @@ function mergePreferences(raw: unknown): UserSettingsPreferences {
       ? (obj.notifications as Record<string, unknown>)
       : {};
 
+  const calRaw =
+    obj.calendar && typeof obj.calendar === "object"
+      ? (obj.calendar as Record<string, unknown>)
+      : {};
+  const calSettingsRaw =
+    calRaw.settings && typeof calRaw.settings === "object"
+      ? (calRaw.settings as Record<string, unknown>)
+      : {};
+
+  const notifPrefsRaw =
+    notificationsRaw.preferences && typeof notificationsRaw.preferences === "object"
+      ? (notificationsRaw.preferences as Record<string, unknown>)
+      : {};
+  const notifCategoriesRaw =
+    notifPrefsRaw.categories && typeof notifPrefsRaw.categories === "object"
+      ? (notifPrefsRaw.categories as Record<string, unknown>)
+      : {};
+  const notifSettingsRaw =
+    notificationsRaw.settings && typeof notificationsRaw.settings === "object"
+      ? (notificationsRaw.settings as Record<string, unknown>)
+      : {};
+
   const appearance = {
     ...DEFAULT_PREFERENCES.appearance,
+    ...(obj.theme === "dark" || obj.theme === "light" ? { theme: obj.theme } : {}),
     ...appearanceRaw,
   };
 
   const productivity = {
     ...DEFAULT_PREFERENCES.productivity,
+    ...(calSettingsRaw.defaultView ? { defaultCalendarView: calSettingsRaw.defaultView } : {}),
+    ...(calSettingsRaw.weekStartsOn !== undefined ? { weekStartsOn: calSettingsRaw.weekStartsOn } : {}),
+    ...(calSettingsRaw.timeFormat ? { timeFormat: calSettingsRaw.timeFormat } : {}),
+    ...(calSettingsRaw.defaultDurationMinutes !== undefined ? { defaultDurationMinutes: calSettingsRaw.defaultDurationMinutes } : {}),
     ...productivityRaw,
   };
 
   const notifications = {
     ...DEFAULT_PREFERENCES.notifications,
+    ...(notifPrefsRaw.enabled !== undefined ? { enabled: notifPrefsRaw.enabled } : {}),
+    ...(notifPrefsRaw.browserNotificationsEnabled !== undefined
+      ? { browserNotifications: notifPrefsRaw.browserNotificationsEnabled }
+      : {}),
+    ...(notifPrefsRaw.quietHoursEnabled !== undefined
+      ? { quietHoursEnabled: notifPrefsRaw.quietHoursEnabled }
+      : {}),
+    ...(notifPrefsRaw.quietHoursStart ? { quietHoursStart: notifPrefsRaw.quietHoursStart } : {}),
+    ...(notifPrefsRaw.quietHoursEnd ? { quietHoursEnd: notifPrefsRaw.quietHoursEnd } : {}),
+    ...(notifCategoriesRaw.tasks !== undefined ? { taskReminders: notifCategoriesRaw.tasks } : {}),
+    ...(notifCategoriesRaw.calendar !== undefined ? { calendarReminders: notifCategoriesRaw.calendar } : {}),
+    ...(notifPrefsRaw.dailySummaryEnabled !== undefined ? { dailyDigest: notifPrefsRaw.dailySummaryEnabled } : {}),
+    ...notifSettingsRaw,
     ...notificationsRaw,
   };
 
@@ -162,6 +202,10 @@ export async function GET() {
     }));
 
     const preferences = mergePreferences(profile?.preferences);
+    const preferencesVersion =
+      typeof profile?.preferences === "object" && profile?.preferences !== null
+        ? ((profile.preferences as Record<string, unknown>)._version as number | undefined) ?? 1
+        : 1;
 
     const response: SettingsApiResponse = {
       user: {
@@ -175,6 +219,7 @@ export async function GET() {
         workspaceName: profile?.defaultWorkspace?.name || "Personal Workspace",
         provider: dbUser?.accounts?.[0]?.providerId || "credential",
         preferences,
+        preferencesVersion,
       },
       sessions,
       syncInfo: {
@@ -226,58 +271,11 @@ export async function PATCH(request: Request) {
   const input = parseResult.data;
 
   try {
-    const existingProfile = await prisma.profile.findUnique({
-      where: { id: verifiedUser.id },
-      select: { preferences: true, fullName: true, avatarUrl: true },
-    });
-
-    const currentPrefs = mergePreferences(existingProfile?.preferences);
-
-    let nextPrefs: UserSettingsPreferences = currentPrefs;
-    if (input.preferences) {
-      nextPrefs = {
-        appearance: {
-          ...currentPrefs.appearance,
-          ...(input.preferences.appearance || {}),
-        },
-        productivity: {
-          ...currentPrefs.productivity,
-          ...(input.preferences.productivity || {}),
-        },
-        notifications: {
-          ...currentPrefs.notifications,
-          ...(input.preferences.notifications || {}),
-        },
-      };
-    }
-
-    const updatedName = input.fullName !== undefined ? input.fullName : undefined;
-    const updatedAvatar =
-      input.avatarUrl !== undefined
-        ? input.avatarUrl === ""
-          ? null
-          : input.avatarUrl
-        : undefined;
-
-    await prisma.$transaction(async (tx) => {
-      if (updatedName !== undefined || updatedAvatar !== undefined) {
-        await tx.user.update({
-          where: { id: verifiedUser.id },
-          data: {
-            ...(updatedName !== undefined ? { name: updatedName } : {}),
-            ...(updatedAvatar !== undefined ? { image: updatedAvatar } : {}),
-          },
-        });
-      }
-
-      await tx.profile.update({
-        where: { id: verifiedUser.id },
-        data: {
-          ...(updatedName !== undefined ? { fullName: updatedName } : {}),
-          ...(updatedAvatar !== undefined ? { avatarUrl: updatedAvatar } : {}),
-          preferences: nextPrefs as unknown as Prisma.InputJsonValue,
-        },
-      });
+    const result = await updateUserProfileSettingsSafely(prisma, verifiedUser.id, {
+      fullName: input.fullName,
+      avatarUrl: input.avatarUrl,
+      preferences: input.preferences,
+      preferencesVersion: input.preferencesVersion,
     });
 
     return NextResponse.json({
@@ -285,9 +283,10 @@ export async function PATCH(request: Request) {
       message: "Settings updated successfully",
       profile: {
         id: verifiedUser.id,
-        fullName: updatedName !== undefined ? updatedName : existingProfile?.fullName || verifiedUser.fullName,
-        avatarUrl: updatedAvatar !== undefined ? updatedAvatar : existingProfile?.avatarUrl ?? verifiedUser.avatarUrl,
-        preferences: nextPrefs,
+        fullName: result.fullName,
+        avatarUrl: result.avatarUrl,
+        preferences: result.preferences,
+        preferencesVersion: result.preferencesVersion,
       },
     });
   } catch (err) {
