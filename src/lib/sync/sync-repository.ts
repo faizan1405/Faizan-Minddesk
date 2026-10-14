@@ -1355,8 +1355,71 @@ async function executeSaveWorkspaceDeskData(
             });
           }
 
-          // 5. Upsert active nodes with strictly valid MindMapNodeType enum
+          // 5. Query existing node IDs to separate bulk create from updates
+          const existingDbNodes = await tx.mindMapNode.findMany({
+            where: {
+              mindMapId: map.id,
+              workspaceId,
+              userId: actor.id,
+            },
+            select: { id: true },
+          });
+          const existingDbNodeIdSet = new Set(existingDbNodes.map((n) => n.id));
+
+          const newNodesToCreate: Prisma.MindMapNodeCreateManyInput[] = [];
+          const existingNodesToUpdate: MapNodeItem[] = [];
+
           for (const node of incomingNodes.values()) {
+            if (existingDbNodeIdSet.has(node.id)) {
+              existingNodesToUpdate.push(node);
+            } else {
+              const nodeData =
+                typeof node.data === "object" && node.data !== null
+                  ? (node.data as Record<string, unknown>)
+                  : {};
+              const semanticType = toSemanticNodeType(node.type, nodeData);
+              const label =
+                typeof nodeData.label === "string" && nodeData.label.trim()
+                  ? nodeData.label.trim()
+                  : "Idea";
+              const noteExcerpt =
+                typeof nodeData.note === "string" ? nodeData.note : "";
+              const linkedTaskId =
+                typeof nodeData.linkedTaskId === "string" && nodeData.linkedTaskId
+                  ? nodeData.linkedTaskId
+                  : null;
+              const linkedNoteId =
+                typeof nodeData.linkedNoteId === "string" && nodeData.linkedNoteId
+                  ? nodeData.linkedNoteId
+                  : null;
+
+              newNodesToCreate.push({
+                id: node.id,
+                mindMapId: map.id,
+                workspaceId,
+                userId: actor.id,
+                label,
+                noteExcerpt,
+                positionX:
+                  typeof node.position?.x === "number" ? node.position.x : 0,
+                positionY:
+                  typeof node.position?.y === "number" ? node.position.y : 0,
+                data: nodeData as unknown as Prisma.InputJsonValue,
+                type: semanticType,
+                linkedTaskId,
+                linkedNoteId,
+                style: {},
+              });
+            }
+          }
+
+          if (newNodesToCreate.length > 0) {
+            await tx.mindMapNode.createMany({
+              data: newNodesToCreate,
+            });
+          }
+
+          for (const node of existingNodesToUpdate) {
             const nodeData =
               typeof node.data === "object" && node.data !== null
                 ? (node.data as Record<string, unknown>)
@@ -1377,7 +1440,7 @@ async function executeSaveWorkspaceDeskData(
                 ? nodeData.linkedNoteId
                 : null;
 
-            await tx.mindMapNode.upsert({
+            await tx.mindMapNode.update({
               where: {
                 id_userId_workspaceId: {
                   id: node.id,
@@ -1385,7 +1448,7 @@ async function executeSaveWorkspaceDeskData(
                   workspaceId,
                 },
               },
-              update: {
+              data: {
                 mindMapId: map.id,
                 label,
                 noteExcerpt,
@@ -1397,41 +1460,37 @@ async function executeSaveWorkspaceDeskData(
                 type: semanticType,
                 linkedTaskId,
                 linkedNoteId,
-              },
-              create: {
-                id: node.id,
-                mindMapId: map.id,
-                workspaceId,
-                userId: actor.id,
-                label,
-                noteExcerpt,
-                positionX:
-                  typeof node.position?.x === "number" ? node.position.x : 0,
-                positionY:
-                  typeof node.position?.y === "number" ? node.position.y : 0,
-                data: nodeData as unknown as Prisma.InputJsonValue,
-                type: semanticType,
-                linkedTaskId,
-                linkedNoteId,
-                style: {},
               },
             });
           }
 
-          // 6. Upsert active edges with valid MindMapEdgeType enum and endpoints
-          for (const edge of incomingEdges.values()) {
-            const semanticEdgeType = toSemanticEdgeType(edge.type);
-            const edgeLabel = typeof edge.label === "string" ? edge.label : "";
-            const edgeStyle =
-              typeof edge.style === "object" && edge.style !== null
-                ? (edge.style as Record<string, unknown>)
-                : {};
+          // 6. Query existing edge IDs to separate bulk create from updates
+          const existingDbEdges = await tx.mindMapEdge.findMany({
+            where: {
+              mindMapId: map.id,
+              workspaceId,
+              userId: actor.id,
+            },
+            select: { id: true },
+          });
+          const existingDbEdgeIdSet = new Set(existingDbEdges.map((e) => e.id));
 
-            await tx.mindMapEdge.upsert({
-              where: {
+          const newEdgesToCreate: Prisma.MindMapEdgeCreateManyInput[] = [];
+          const existingEdgesToUpdate: MapEdgeItem[] = [];
+
+          for (const edge of incomingEdges.values()) {
+            if (existingDbEdgeIdSet.has(edge.id)) {
+              existingEdgesToUpdate.push(edge);
+            } else {
+              const semanticEdgeType = toSemanticEdgeType(edge.type);
+              const edgeLabel = typeof edge.label === "string" ? edge.label : "";
+              const edgeStyle =
+                typeof edge.style === "object" && edge.style !== null
+                  ? (edge.style as Record<string, unknown>)
+                  : {};
+
+              newEdgesToCreate.push({
                 id: edge.id,
-              },
-              update: {
                 mindMapId: map.id,
                 workspaceId,
                 userId: actor.id,
@@ -1441,9 +1500,29 @@ async function executeSaveWorkspaceDeskData(
                 label: edgeLabel,
                 type: semanticEdgeType,
                 style: edgeStyle as unknown as Prisma.InputJsonValue,
-              },
-              create: {
+              });
+            }
+          }
+
+          if (newEdgesToCreate.length > 0) {
+            await tx.mindMapEdge.createMany({
+              data: newEdgesToCreate,
+            });
+          }
+
+          for (const edge of existingEdgesToUpdate) {
+            const semanticEdgeType = toSemanticEdgeType(edge.type);
+            const edgeLabel = typeof edge.label === "string" ? edge.label : "";
+            const edgeStyle =
+              typeof edge.style === "object" && edge.style !== null
+                ? (edge.style as Record<string, unknown>)
+                : {};
+
+            await tx.mindMapEdge.update({
+              where: {
                 id: edge.id,
+              },
+              data: {
                 mindMapId: map.id,
                 workspaceId,
                 userId: actor.id,
@@ -1486,7 +1565,7 @@ async function executeSaveWorkspaceDeskData(
       conflictReconciled: reconciled.conflictReconciled,
       preferencesVersion: reconciled.preferencesVersion,
     };
-  }, { maxWait: 30000, timeout: 120000 });
+  }, { maxWait: 15000, timeout: 30000 });
 }
 
 export interface ImportPreviewResult {
@@ -1919,7 +1998,7 @@ export async function updateUserProfileSettingsSafely(
         },
         preferencesVersion: nextVersion,
       };
-    }, { maxWait: 30000, timeout: 120000 });
+    }, { maxWait: 15000, timeout: 30000 });
   } finally {
     releaseQueue();
     if (userSaveQueues.get(userId) === queuePromise) {
