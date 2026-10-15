@@ -45,7 +45,7 @@ export const auth = betterAuth({
       const baseUrl = getAppBaseUrl();
       const callbackUrl = `${baseUrl}/auth/callback?type=verify&token=${encodeURIComponent(
         token
-      )}&next=/dashboard`;
+      )}&next=/tasks`;
 
       await sendVerificationEmailMessage({
         email: user.email,

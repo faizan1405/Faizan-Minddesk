@@ -2,7 +2,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isAuthConfigured, sanitizeRedirectPath } from "@/lib/auth/env";
 
 const PROTECTED_PREFIXES = [
-  "/dashboard",
   "/tasks",
   "/notes",
   "/mind-maps",
@@ -72,6 +71,13 @@ export async function updateSessionAndGuardRoutes(
 ): Promise<NextResponse> {
   const { pathname, search } = request.nextUrl;
 
+  // 0. Immediate redirect for legacy /dashboard URLs to /tasks so existing bookmarks don't break
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
+    const tasksUrl = new URL("/tasks", request.url);
+    tasksUrl.search = search;
+    return NextResponse.redirect(tasksUrl);
+  }
+
   const response = NextResponse.next({
     request,
   });
@@ -108,7 +114,7 @@ export async function updateSessionAndGuardRoutes(
   // 3. Authenticated user visiting /login, /signup, or /forgot-password
   if (isAuthenticated && isGuestOnlyAuthPath(pathname)) {
     const nextParam = request.nextUrl.searchParams.get("next");
-    const targetPath = sanitizeRedirectPath(nextParam, "/dashboard");
+    const targetPath = sanitizeRedirectPath(nextParam, "/tasks");
     const redirectUrl = new URL(targetPath, request.url);
     return NextResponse.redirect(redirectUrl);
   }

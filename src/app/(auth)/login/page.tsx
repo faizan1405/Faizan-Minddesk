@@ -21,7 +21,7 @@ interface LoginPageProps {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
-  const nextPath = sanitizeRedirectPath(params.next, "/dashboard");
+  const nextPath = sanitizeRedirectPath(params.next, "/tasks");
   const user = await getVerifiedUser();
 
   if (user) {
@@ -49,7 +49,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             Don&apos;t have an account?{" "}
             <Link
               href={
-                nextPath !== "/dashboard"
+                nextPath !== "/tasks"
                   ? `/signup?next=${encodeURIComponent(nextPath)}`
                   : "/signup"
               }

@@ -22,7 +22,7 @@ export default async function ForgotPasswordPage({
   const user = await getVerifiedUser();
 
   if (user) {
-    redirect("/dashboard");
+    redirect("/tasks");
   }
 
   if (isAdminAuthConfigured()) {

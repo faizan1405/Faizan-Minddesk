@@ -128,7 +128,7 @@ export function getBetterAuthSecret(): string {
  */
 export function sanitizeRedirectPath(
   rawPath: string | null | undefined,
-  fallback = "/dashboard"
+  fallback = "/tasks"
 ): string {
   if (!rawPath || typeof rawPath !== "string") {
     return fallback;
@@ -153,6 +153,11 @@ export function sanitizeRedirectPath(
     trimmed.startsWith("/forgot-password")
   ) {
     return fallback;
+  }
+
+  // Redirect legacy /dashboard paths to /tasks
+  if (trimmed === "/dashboard" || trimmed.startsWith("/dashboard/")) {
+    return "/tasks";
   }
 
   return trimmed;

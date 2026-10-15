@@ -103,7 +103,7 @@ async function runAcceptanceSuite() {
     await page.fill('input[name="password"]', password);
     await page.click('button[type="submit"]');
 
-    await page.waitForURL((url) => url.pathname.includes("/dashboard"), { timeout: 15000 });
+    await page.waitForURL((url) => url.pathname.includes("/tasks") || url.pathname.includes("/dashboard"), { timeout: 15000 });
     console.log("✓ Logged into MindDesk successfully.");
 
     // Navigate to Mind Maps library

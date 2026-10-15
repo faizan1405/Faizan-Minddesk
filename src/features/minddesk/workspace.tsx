@@ -4,15 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowUpRight,
-  BookOpen,
   CalendarDays,
-  Check,
   ChevronRight,
   Command,
   FileText,
   Focus,
-  Home,
   LayoutGrid,
   ListTodo,
   LogOut,
@@ -23,7 +19,6 @@ import {
   Plus,
   Search,
   Settings2,
-  Sparkles,
   Star,
   Sun,
   X,
@@ -34,7 +29,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useUIStore } from "@/stores/ui-store";
 import { MindDeskProvider, useDeskData } from "./store";
 import { createDefaultMindMap } from "./utils/mind-map-utils";
 import { CalendarProvider } from "@/features/calendar/calendar-context";
@@ -42,7 +36,6 @@ import { HabitsProvider } from "@/features/habits/context/habits-context";
 import { NotificationProvider } from "@/features/notifications/context/notification-context";
 import { CalendarWorkspace } from "@/features/calendar/components/calendar-workspace";
 import { DailyPlannerWorkspace } from "@/features/planner/components/daily-planner-workspace";
-import { PlanYourDayButton } from "@/features/planner/components/plan-your-day-button";
 import { HabitsWorkspace } from "@/features/habits/components/habits-workspace";
 import { NotificationCenterWorkspace } from "@/features/notifications/components/notification-center-workspace";
 import { NotificationBell } from "@/features/notifications/components/notification-bell";
@@ -52,8 +45,7 @@ import { SettingsView } from "@/features/settings";
 import { workspaceRoutes, workspaceTitles, type WorkspaceView } from "./workspace-types";
 import type { TaskItem } from "./types";
 
-export const mainLinks: { id: WorkspaceView; label: string; href: string; icon: typeof Home }[] = [
-  { id: "home", label: "Your desk", href: "/dashboard", icon: Home },
+export const mainLinks: { id: WorkspaceView; label: string; href: string; icon: typeof ListTodo }[] = [
   { id: "tasks", label: "My tasks", href: "/tasks", icon: ListTodo },
   { id: "calendar", label: "Calendar", href: "/calendar", icon: CalendarDays },
   { id: "plan-your-day", label: "Plan your day", href: "/plan-your-day", icon: CalendarCheck2 },
@@ -63,7 +55,7 @@ export const mainLinks: { id: WorkspaceView; label: string; href: string; icon: 
   { id: "projects", label: "Projects", href: "/projects", icon: LayoutGrid },
 ];
 
-export function MindDeskWorkspace({ initialView = "home" }: { initialView?: WorkspaceView } = {}) {
+export function MindDeskWorkspace({ initialView = "tasks" }: { initialView?: WorkspaceView } = {}) {
   return (
     <MindDeskProvider>
       <CalendarProvider>
@@ -316,9 +308,7 @@ function Workspace({ initialView }: { initialView: WorkspaceView }) {
         </header>
 
         <div className="minddesk-scrollbar flex-1 overflow-y-auto pb-16 md:pb-0">
-          {view === "home" ? (
-            <DashboardView navigate={navigate} onQuick={() => setQuickOpen(true)} />
-          ) : view === "tasks" ? (
+          {view === "tasks" ? (
             <TasksView {...(selectedItem ? { initialTaskId: selectedItem } : {})} />
           ) : view === "calendar" ? (
             <div className="mx-auto w-full max-w-[96rem] p-4 sm:p-6"><CalendarWorkspace /></div>
@@ -358,7 +348,7 @@ function Workspace({ initialView }: { initialView: WorkspaceView }) {
               className={`flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] ${view === id ? "text-primary" : "text-muted-foreground"}`}
             >
               <Icon className="size-5" />
-              <span className="max-w-full truncate">{label === "Your desk" ? "Home" : label}</span>
+              <span className="max-w-full truncate">{label}</span>
             </button>
           ))}
         </nav>
@@ -545,250 +535,7 @@ function Workspace({ initialView }: { initialView: WorkspaceView }) {
   );
 }
 
-export function DashboardView({
-  navigate: navigateProp,
-  onQuick: onQuickProp,
-}: {
-  navigate?: (view: WorkspaceView, itemId?: string) => void;
-  onQuick?: () => void;
-} = {}) {
-  const router = useRouter();
-  const { data, update, setSelectedItem } = useDeskData();
-  const setQuickCaptureOpen = useUIStore((state) => state.setQuickCaptureOpen);
 
-  const navigate = (view: WorkspaceView, itemId?: string) => {
-    if (navigateProp) {
-      navigateProp(view, itemId);
-      return;
-    }
-    setSelectedItem(itemId ?? null);
-    router.push(workspaceRoutes[view]);
-  };
-
-  const onQuick = () => {
-    if (onQuickProp) {
-      onQuickProp();
-      return;
-    }
-    setQuickCaptureOpen(true);
-  };
-
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const openTasks = data.tasks.filter((task) => !task.complete);
-  const todayTasks = openTasks.filter((task) => task.due !== "Tomorrow" && task.due !== "This week");
-  const completed = data.tasks.filter((task) => task.complete).length;
-  const hello =
-    new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening";
-
-  return (
-    <section className="mx-auto w-full max-w-7xl px-5 pb-12 pt-8 sm:px-8 sm:pt-11">
-      <header className="mb-8 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4 sm:flex sm:justify-between">
-        <div className="min-w-0">
-          <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
-            <Sparkles className="size-4 text-primary" /> A new page, a little more room
-          </div>
-          <h1 className="truncate text-3xl font-semibold tracking-tight sm:text-[34px]" suppressHydrationWarning>
-            {mounted ? hello : "Welcome"}, Faizan.
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">Let’s turn today’s ideas into progress.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <PlanYourDayButton size="md" />
-          <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex" suppressHydrationWarning>
-            <CalendarDays className="size-4" />
-            {mounted ? new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" }).format(new Date()) : ""}
-          </div>
-        </div>
-      </header>
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.85fr)]">
-        <section className="min-w-0">
-          <div className="mb-3 flex items-end justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Your day</p>
-              <h2 className="mt-1 text-xl font-semibold">
-                Today’s focus <span className="ml-1 text-sm font-normal text-muted-foreground">{todayTasks.length}</span>
-              </h2>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate("tasks")}>
-              All tasks <ChevronRight />
-            </Button>
-          </div>
-          <div className="minddesk-panel divide-y divide-border overflow-hidden">
-            {todayTasks.slice(0, 5).map((task) => (
-              <div
-                key={task.id}
-                className="minddesk-task-row flex items-start gap-3 px-4 py-4 sm:px-5"
-                data-done={task.complete}
-              >
-                <button
-                  aria-label={`Complete ${task.title}`}
-                  className="minddesk-task-check mt-0.5 grid size-5 shrink-0 place-items-center"
-                  data-done={task.complete}
-                  onClick={() =>
-                    update((current) => ({
-                      ...current,
-                      tasks: current.tasks.map((item) =>
-                        item.id === task.id ? { ...item, complete: !item.complete } : item,
-                      ),
-                    }))
-                  }
-                >
-                  {task.complete && <Check className="size-3" />}
-                </button>
-                <div className="min-w-0 flex-1">
-                  <p className="minddesk-task-title truncate text-sm font-medium">{task.title}</p>
-                  <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{task.due}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{data.projects.find((project) => project.id === task.projectId)?.name}</span>
-                  </div>
-                </div>
-                {task.starred && <Star className="mt-0.5 size-4 shrink-0 fill-primary text-primary" />}
-              </div>
-            ))}
-            {todayTasks.length === 0 && (
-              <p className="px-5 py-9 text-center text-sm text-muted-foreground">A clear day. Keep it that way.</p>
-            )}
-            <button
-              className="flex w-full items-center gap-2 px-5 py-3 text-sm text-primary hover:bg-accent/60"
-              onClick={onQuick}
-            >
-              <Plus className="size-4" /> Add a task
-            </button>
-          </div>
-        </section>
-
-        <section className="min-w-0">
-          <div className="mb-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">A gentle overview</p>
-            <h2 className="mt-1 text-xl font-semibold">In good shape</h2>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              className="minddesk-panel p-4 text-left transition-colors hover:border-ring/50"
-              onClick={() => navigate("tasks")}
-            >
-              <span className="grid size-8 place-items-center rounded-lg bg-sage text-sage-ink">
-                <Check className="size-4" />
-              </span>
-              <span className="mt-4 block text-2xl font-semibold">{completed}</span>
-              <span className="mt-1 block text-xs text-muted-foreground">Tasks completed</span>
-            </button>
-            <button
-              className="minddesk-panel p-4 text-left transition-colors hover:border-ring/50"
-              onClick={() => navigate("projects")}
-            >
-              <span className="grid size-8 place-items-center rounded-lg bg-sky text-sky-ink">
-                <LayoutGrid className="size-4" />
-              </span>
-              <span className="mt-4 block text-2xl font-semibold">{data.projects.length}</span>
-              <span className="mt-1 block text-xs text-muted-foreground">Open projects</span>
-            </button>
-          </div>
-          <button
-            className="minddesk-panel mt-3 flex w-full items-center gap-3 p-4 text-left transition-colors hover:border-ring/50"
-            onClick={() => navigate("tasks")}
-          >
-            <div className="grid size-9 place-items-center rounded-lg bg-coral text-coral-ink">
-              <Clock3Icon />
-            </div>
-            <div className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">Coming up</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                {openTasks.filter((task) => task.due === "Tomorrow" || task.due === "This week").length
-                  ? `${openTasks.filter((task) => task.due === "Tomorrow" || task.due === "This week").length} tasks later this week`
-                  : "A little breathing room"}
-              </span>
-            </div>
-            <ArrowUpRight className="size-4 text-muted-foreground" />
-          </button>
-        </section>
-
-        <section className="min-w-0">
-          <div className="mb-3 flex items-end justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Keep the thread</p>
-              <h2 className="mt-1 text-xl font-semibold">Recently opened</h2>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate("notes")}>
-              All notes <ChevronRight />
-            </Button>
-          </div>
-          {data.notes.length === 0 ? (
-            <div className="minddesk-panel flex flex-col items-center justify-center p-6 text-center">
-              <span className="grid size-8 place-items-center rounded-lg bg-muted text-muted-foreground mb-2">
-                <FileText className="size-4" />
-              </span>
-              <p className="text-sm font-medium">No notes yet</p>
-              <p className="mt-1 text-xs text-muted-foreground">Capture thoughts, ideas, or meeting notes.</p>
-              <Button variant="ghost" size="sm" className="mt-3 gap-1 text-xs" onClick={() => navigate("notes")}>
-                <Plus className="size-3.5" /> Create a note
-              </Button>
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {data.notes.slice(0, 2).map((note) => (
-                <button
-                  key={note.id}
-                  className="minddesk-panel min-h-40 p-4 text-left transition-colors hover:border-ring/50"
-                  onClick={() => navigate("notes", note.id)}
-                >
-                  <span className="grid size-8 place-items-center rounded-lg bg-brand-soft text-lg">{note.icon}</span>
-                  <span className="mt-3 block truncate text-sm font-semibold">{note.title}</span>
-                  <span className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{note.excerpt}</span>
-                  <span className="mt-3 block text-[11px] text-muted-foreground">{note.updated}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="min-w-0">
-          <div className="mb-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Start somewhere</p>
-            <h2 className="mt-1 text-xl font-semibold">A small next step</h2>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { label: "Task", icon: ListTodo },
-              { label: "Note", icon: BookOpen },
-              { label: "Mind map", icon: Map },
-            ].map(({ label, icon: Icon }) => (
-              <button
-                key={label}
-                className="minddesk-panel flex min-h-[92px] flex-col items-center justify-center gap-2 p-3 text-xs font-medium transition-colors hover:border-ring/50 hover:bg-accent/30"
-                onClick={onQuick}
-              >
-                <span className="grid size-8 place-items-center rounded-lg bg-muted text-muted-foreground">
-                  <Icon className="size-4" />
-                </span>
-                {label}
-              </button>
-            ))}
-          </div>
-          <button
-            className="mt-3 flex w-full items-center gap-3 rounded-xl border border-dashed border-border px-4 py-3 text-left hover:border-primary/50 hover:bg-accent/30"
-            onClick={() => navigate("maps")}
-          >
-            <div className="grid size-9 place-items-center rounded-lg bg-brand-soft text-brand-ink">
-              <Map className="size-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">{data.maps[0]?.title ?? "Make a mind map"}</span>
-              <span className="mt-1 block text-xs text-muted-foreground">Pick up an idea where you left off.</span>
-            </div>
-            <ArrowUpRight className="size-4 text-muted-foreground" />
-          </button>
-        </section>
-      </div>
-    </section>
-  );
-}
 
 export function FavoritesView({
   navigate: navigateProp,
@@ -984,7 +731,7 @@ export function MindDeskAccountPage({ mode: initialMode }: { mode: "sign-in" | "
   return (
     <main className="grid min-h-screen place-items-center bg-background px-5 py-12 text-foreground">
       <section className="w-full max-w-md">
-        <Link href="/dashboard" className="mb-8 flex items-center gap-3">
+        <Link href="/tasks" className="mb-8 flex items-center gap-3">
           <span className="grid size-10 place-items-center rounded-xl bg-brand-soft font-semibold text-brand-ink">M</span>
           <span className="text-sm font-semibold">Mind Desk</span>
         </Link>
@@ -1023,7 +770,3 @@ export function MindDeskAccountPage({ mode: initialMode }: { mode: "sign-in" | "
 }
 
 export { SettingsView } from "@/features/settings";
-
-function Clock3Icon() {
-  return <CalendarDays className="size-4" />;
-}

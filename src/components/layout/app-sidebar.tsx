@@ -10,7 +10,6 @@ import {
   FileText,
   Flame,
   Focus,
-  Home,
   LayoutGrid,
   ListTodo,
   Map,
@@ -34,12 +33,6 @@ export interface NavItemConfig {
 }
 
 export const PRIMARY_NAV_ITEMS: NavItemConfig[] = [
-  {
-    id: "home",
-    title: "Your desk",
-    href: "/dashboard",
-    icon: Home,
-  },
   {
     id: "tasks",
     title: "My tasks",
@@ -85,12 +78,6 @@ export const PRIMARY_NAV_ITEMS: NavItemConfig[] = [
 ];
 
 export const MOBILE_NAV_ITEMS: NavItemConfig[] = [
-  {
-    id: "home",
-    title: "Home",
-    href: "/dashboard",
-    icon: Home,
-  },
   {
     id: "tasks",
     title: "Tasks",
@@ -169,7 +156,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
     <div className="flex h-full w-[264px] flex-col bg-sidebar text-sidebar-foreground">
       <div className="flex h-[72px] items-center gap-3 border-b border-sidebar-border px-5">
         <Link
-          href="/dashboard"
+          href="/tasks"
           className="flex min-w-0 flex-1 items-center gap-3"
           onClick={() => setMobileNavOpen(false)}
         >

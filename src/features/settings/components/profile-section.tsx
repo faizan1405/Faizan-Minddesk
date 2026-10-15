@@ -161,7 +161,7 @@ export function ProfileSection({ user, onSave, isSaving }: ProfileSectionProps) 
               autoComplete="name"
             />
             <p className="text-[11px] text-muted-foreground">
-              This name is shown across your notes, dashboard, and workspace header.
+              This name is shown across your notes, tasks, and workspace header.
             </p>
           </div>
 

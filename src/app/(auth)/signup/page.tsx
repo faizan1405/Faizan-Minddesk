@@ -21,7 +21,7 @@ interface SignupPageProps {
 
 export default async function SignupPage({ searchParams }: SignupPageProps) {
   const params = await searchParams;
-  const nextPath = sanitizeRedirectPath(params.next, "/dashboard");
+  const nextPath = sanitizeRedirectPath(params.next, "/tasks");
   const user = await getVerifiedUser();
 
   if (user) {
@@ -30,7 +30,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
 
   if (isAdminAuthConfigured()) {
     redirect(
-      nextPath !== "/dashboard"
+      nextPath !== "/tasks"
         ? `/login?next=${encodeURIComponent(nextPath)}`
         : "/login"
     );
@@ -45,7 +45,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
           Already have an account?{" "}
           <Link
             href={
-              nextPath !== "/dashboard"
+              nextPath !== "/tasks"
                 ? `/login?next=${encodeURIComponent(nextPath)}`
                 : "/login"
             }
