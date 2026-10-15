@@ -119,20 +119,44 @@ export function HabitHeatmap() {
 
   if (habits.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-16 px-4 text-center">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground mb-3">
-          <CalendarDays size={22} />
+      <div className="space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight text-foreground">
+              Heatmap & Trends
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Consistency statistics, active momentum, and 90-day activity history.
+            </p>
+          </div>
         </div>
-        <h3 className="text-sm font-bold text-foreground">No Habit Analytics Yet</h3>
-        <p className="mt-1 text-xs text-muted-foreground max-w-sm">
-          Create and complete habits in Today&apos;s Habits or All Habits to populate your 90-day consistency heatmap, streaks, and momentum scores.
-        </p>
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-16 px-4 text-center">
+          <div className="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground mb-3">
+            <CalendarDays size={22} />
+          </div>
+          <h3 className="text-sm font-bold text-foreground">No Habit Analytics Yet</h3>
+          <p className="mt-1 text-xs text-muted-foreground max-w-sm">
+            Create and complete habits in Today&apos;s Habits or All Habits to populate your 90-day consistency heatmap, streaks, and momentum scores.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-5">
+      {/* Contextual Heading */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold tracking-tight text-foreground">
+            Heatmap & Trends
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Consistency statistics, active momentum, and 90-day activity history.
+          </p>
+        </div>
+      </div>
+
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-2xl border border-border bg-card p-4">
