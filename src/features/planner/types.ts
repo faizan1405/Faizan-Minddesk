@@ -76,12 +76,20 @@ export interface PlannerRoutineException {
 
 export interface FocusSession {
   id: string;
-  blockId?: string;
+  blockId?: string | null;
   blockTitle: string;
   date: string; // YYYY-MM-DD
   focusedMinutes: number;
   completedAt: string;
   preset: string;
+  sessionId?: string;
+  categoryColor?: string;
+  sessionType?: "focus" | "short_break" | "long_break" | string;
+  plannedDurationMinutes?: number;
+  actualDurationSeconds?: number;
+  startedAt?: string;
+  completed?: boolean;
+  notes?: string;
 }
 
 export type PomodoroPreset = "25-5" | "50-10" | "custom";

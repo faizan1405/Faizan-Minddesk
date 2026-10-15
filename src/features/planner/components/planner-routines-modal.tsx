@@ -233,6 +233,7 @@ export function PlannerRoutinesModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close"
             className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
           >
             <X size={18} />

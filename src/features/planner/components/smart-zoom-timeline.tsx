@@ -16,6 +16,7 @@ import {
 import type { ScheduledTaskBlock } from "@/features/calendar/types";
 import { useCalendar } from "@/features/calendar/calendar-context";
 import { usePomodoro } from "../pomodoro-context";
+import { TimeBlockFocusBadge } from "@/features/pomodoro";
 import {
   ZoomTimeWindow,
   DEFAULT_PLANNER_CATEGORIES,
@@ -298,7 +299,11 @@ export function SmartZoomTimeline({
   };
 
   const handleLaunchPomodoro = (block: ScheduledTaskBlock) => {
-    startPomodoro(block);
+    const resolvedColor = resolveCategoryColor(block.categoryId, block.color, categories);
+    startPomodoro({
+      ...block,
+      color: resolvedColor,
+    });
     openFocusModal();
   };
 
@@ -560,6 +565,11 @@ export function SmartZoomTimeline({
                         Routine
                       </span>
                     )}
+
+                    <TimeBlockFocusBadge
+                      blockId={block.id}
+                      plannedDurationMinutes={block.durationMinutes}
+                    />
                   </div>
 
                   {/* Quick Action Buttons (shown on hover or tap) */}

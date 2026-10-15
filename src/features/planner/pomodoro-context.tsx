@@ -3,35 +3,22 @@
 import React, {
   createContext,
   useContext,
-  useState,
   useEffect,
+  useMemo,
   useCallback,
-  useRef,
   ReactNode,
 } from "react";
-import { format } from "date-fns";
 import type { ScheduledTaskBlock } from "@/features/calendar/types";
 import { useCalendar } from "@/features/calendar/calendar-context";
+import {
+  usePomodoroStore,
+  initializePomodoroSubsystem,
+  registerFocusSessionPersistenceHandler,
+  FocusSessionRecord,
+  PomodoroSessionType,
+  TimeBlockRef,
+} from "@/features/pomodoro";
 import type { PomodoroPreset, PomodoroState } from "./types";
-import { playChimeSound, playTickSound } from "./utils/sound-effects";
-
-const POMODORO_STORAGE_KEY = "minddesk_pomodoro_state";
-
-const DEFAULT_POMODORO_STATE: PomodoroState = {
-  blockId: undefined,
-  blockTitle: "Quick Focus",
-  categoryColor: "#4f46e5",
-  phase: "focus",
-  status: "idle",
-  preset: "25-5",
-  focusMinutes: 25,
-  breakMinutes: 5,
-  targetEndTimeMs: undefined,
-  remainingSeconds: 25 * 60,
-  sessionCount: 0,
-  totalFocusedSeconds: 0,
-  soundEnabled: true,
-};
 
 interface PomodoroContextType {
   state: PomodoroState;
@@ -50,259 +37,191 @@ interface PomodoroContextType {
 const PomodoroContext = createContext<PomodoroContextType | null>(null);
 
 export function PomodoroProvider({ children }: { children: ReactNode }) {
-  const { addFocusSession } = useCalendar();
+  const { addFocusSession, focusSessions } = useCalendar();
+  const store = usePomodoroStore();
 
-  const [state, setState] = useState<PomodoroState>(() => {
-    if (typeof window === "undefined") return DEFAULT_POMODORO_STATE;
-    try {
-      const stored = localStorage.getItem(POMODORO_STORAGE_KEY);
-      if (stored) {
-        const parsed: PomodoroState = JSON.parse(stored);
-        // Refresh recovery: if it was running, recalculate remainingSeconds from targetEndTimeMs
-        if (parsed.status === "running" && parsed.targetEndTimeMs) {
-          const now = Date.now();
-          const diff = Math.round((parsed.targetEndTimeMs - now) / 1000);
-          if (diff > 0) {
-            return {
-              ...parsed,
-              remainingSeconds: diff,
-            };
-          } else {
-            // Timer expired while user was away / page was closed
-            return {
-              ...parsed,
-              status: "completed",
-              remainingSeconds: 0,
-            };
-          }
-        }
-        return parsed;
-      }
-    } catch {
-      // Fallback
-    }
-    return DEFAULT_POMODORO_STATE;
-  });
-
-  const [isFocusModalOpen, setIsFocusModalOpen] = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Synchronize state changes to localStorage for refresh recovery
+  // Initialize browser listeners and cross-tab bus
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      localStorage.setItem(POMODORO_STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      // Ignore storage errors
-    }
-  }, [state]);
+    const cleanup = initializePomodoroSubsystem();
+    return cleanup;
+  }, []);
 
-  // Drift-proof timer loop based on epoch timestamp (targetEndTimeMs)
+  // Bridge authoritative session completions to MySQL sync repository via addFocusSession
   useEffect(() => {
-    if (state.status !== "running" || !state.targetEndTimeMs) {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      return;
-    }
+    const unsubscribe = registerFocusSessionPersistenceHandler((record: FocusSessionRecord) => {
+      const dateStr = (record.startedAt || record.completedAt || new Date().toISOString()).slice(0, 10);
+      const focusedMins = Math.max(1, Math.round(record.actualDurationSeconds / 60));
 
-    intervalRef.current = setInterval(() => {
-      const now = Date.now();
-      const left = Math.round((state.targetEndTimeMs! - now) / 1000);
+      addFocusSession({
+        id: record.id,
+        sessionId: record.sessionId,
+        blockId: record.blockId || undefined,
+        blockTitle: record.blockTitle,
+        date: dateStr,
+        focusedMinutes: focusedMins,
+        completedAt: record.completedAt,
+        preset: record.sessionType,
+        categoryColor: record.categoryColor,
+        sessionType: record.sessionType,
+        plannedDurationMinutes: record.plannedDurationMinutes,
+        actualDurationSeconds: record.actualDurationSeconds,
+        startedAt: record.startedAt,
+        completed: record.completed,
+      });
+    });
 
-      if (left <= 0) {
-        // Interval completed!
-        if (intervalRef.current) clearInterval(intervalRef.current);
+    return unsubscribe;
+  }, [addFocusSession]);
 
-        if (state.soundEnabled) {
-          playChimeSound();
+  // Hydrate store history from MySQL-backed focusSessions if present
+  useEffect(() => {
+    if (focusSessions && focusSessions.length > 0) {
+      const currentHistory = usePomodoroStore.getState().history;
+      const historyMap = new Map(currentHistory.map((h) => [h.id, h]));
+      let added = false;
+
+      for (const fs of focusSessions) {
+        if (!historyMap.has(fs.id) && (!fs.sessionId || !currentHistory.some((h) => h.sessionId === fs.sessionId))) {
+          const rec: FocusSessionRecord = {
+            id: fs.id,
+            sessionId: fs.sessionId || fs.id,
+            blockId: fs.blockId || null,
+            blockTitle: fs.blockTitle,
+            categoryColor: fs.categoryColor,
+            sessionType: (fs.sessionType as PomodoroSessionType) || "focus",
+            plannedDurationMinutes: fs.plannedDurationMinutes || fs.focusedMinutes,
+            actualDurationSeconds: fs.actualDurationSeconds || fs.focusedMinutes * 60,
+            startedAt: fs.startedAt || `${fs.date}T09:00:00.000Z`,
+            completedAt: fs.completedAt || `${fs.date}T09:25:00.000Z`,
+            completed: fs.completed !== undefined ? fs.completed : true,
+          };
+          historyMap.set(fs.id, rec);
+          added = true;
         }
-
-        if (state.phase === "focus") {
-          // Record actual focused session
-          const todayStr = format(new Date(), "yyyy-MM-dd");
-          addFocusSession({
-            blockId: state.blockId,
-            blockTitle: state.blockTitle,
-            date: todayStr,
-            focusedMinutes: state.focusMinutes,
-            completedAt: new Date().toISOString(),
-            preset: state.preset,
-          });
-
-          // Transition to Break
-          const breakSecs = state.breakMinutes * 60;
-          setState((prev) => ({
-            ...prev,
-            phase: "break",
-            status: "paused", // user can manually start break or resume
-            targetEndTimeMs: undefined,
-            remainingSeconds: breakSecs,
-            sessionCount: prev.sessionCount + 1,
-            totalFocusedSeconds: prev.totalFocusedSeconds + prev.focusMinutes * 60,
-          }));
-        } else {
-          // Transition back to Focus
-          const focusSecs = state.focusMinutes * 60;
-          setState((prev) => ({
-            ...prev,
-            phase: "focus",
-            status: "paused",
-            targetEndTimeMs: undefined,
-            remainingSeconds: focusSecs,
-          }));
-        }
-      } else {
-        setState((prev) => ({
-          ...prev,
-          remainingSeconds: left,
-        }));
       }
-    }, 500);
 
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (added) {
+        const merged = Array.from(historyMap.values()).sort(
+          (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
+        );
+        usePomodoroStore.setState({ history: merged });
+      }
+    }
+  }, [focusSessions]);
+
+  // Adapt store state into PomodoroState interface
+  const state: PomodoroState = useMemo(() => {
+    const isFocus = store.sessionType === "focus";
+    const isRunning =
+      store.state === "focusing" ||
+      store.state === "short_break" ||
+      store.state === "long_break";
+
+    const mappedStatus: PomodoroState["status"] = isRunning
+      ? "running"
+      : store.state === "paused"
+      ? "paused"
+      : store.state === "completed"
+      ? "completed"
+      : "idle";
+
+    const mappedPreset: PomodoroPreset =
+      store.preset === "25_5" ? "25-5" : store.preset === "50_10" ? "50-10" : "custom";
+
+    const totalFocusedSeconds = store.history
+      .filter((h) => h.sessionType === "focus")
+      .reduce((acc, curr) => acc + curr.actualDurationSeconds, 0);
+
+    return {
+      blockId: store.currentBlock?.id,
+      blockTitle: store.currentBlock?.title || (isFocus ? "Quick Focus" : "Rest & Recharge"),
+      categoryColor: store.currentBlock?.color || (isFocus ? "#4f46e5" : "#10b981"),
+      phase: isFocus ? "focus" : "break",
+      status: mappedStatus,
+      preset: mappedPreset,
+      focusMinutes: store.settings.focusDurationMinutes,
+      breakMinutes: store.settings.shortBreakDurationMinutes,
+      targetEndTimeMs: store.targetEndTimestamp ?? undefined,
+      remainingSeconds: store.remainingSeconds,
+      sessionCount: store.completedSessionsCount,
+      totalFocusedSeconds,
+      soundEnabled: store.settings.soundEnabled,
     };
-  }, [state.status, state.targetEndTimeMs, state.phase, state.focusMinutes, state.breakMinutes, state.soundEnabled, state.blockId, state.blockTitle, state.preset, addFocusSession]);
+  }, [store]);
 
   const startPomodoro = useCallback(
     (block?: ScheduledTaskBlock) => {
-      if (state.soundEnabled) playTickSound();
-
-      setState((prev) => {
-        const title = block?.title || prev.blockTitle;
-        const color = block?.color || prev.categoryColor;
-        const blockId = block?.id || prev.blockId;
-        const durationSecs = prev.phase === "focus" ? prev.focusMinutes * 60 : prev.breakMinutes * 60;
-        const targetMs = Date.now() + durationSecs * 1000;
-
-        return {
-          ...prev,
-          blockId,
-          blockTitle: title,
-          categoryColor: color,
-          status: "running",
-          targetEndTimeMs: targetMs,
-          remainingSeconds: durationSecs,
+      if (block) {
+        const ref: TimeBlockRef = {
+          id: block.id,
+          title: block.title,
+          color: block.color,
+          plannedDurationMinutes: block.durationMinutes,
+          taskId: block.taskId,
+          date: block.date,
         };
-      });
+        store.selectTimeBlock(ref);
+        store.start(ref);
+      } else {
+        store.start();
+      }
     },
-    [state.soundEnabled]
+    [store]
   );
 
   const pausePomodoro = useCallback(() => {
-    setState((prev) => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      return {
-        ...prev,
-        status: "paused",
-        targetEndTimeMs: undefined,
-      };
-    });
-  }, []);
+    store.pause();
+  }, [store]);
 
   const resumePomodoro = useCallback(() => {
-    if (state.soundEnabled) playTickSound();
-
-    setState((prev) => {
-      const targetMs = Date.now() + prev.remainingSeconds * 1000;
-      return {
-        ...prev,
-        status: "running",
-        targetEndTimeMs: targetMs,
-      };
-    });
-  }, [state.soundEnabled]);
+    store.resume();
+  }, [store]);
 
   const resetPomodoro = useCallback(() => {
-    setState((prev) => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      const initialSecs = prev.phase === "focus" ? prev.focusMinutes * 60 : prev.breakMinutes * 60;
-      return {
-        ...prev,
-        status: "idle",
-        targetEndTimeMs: undefined,
-        remainingSeconds: initialSecs,
-      };
-    });
-  }, []);
+    store.reset();
+  }, [store]);
 
   const skipPhase = useCallback(() => {
-    setState((prev) => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (prev.phase === "focus") {
-        const breakSecs = prev.breakMinutes * 60;
-        return {
-          ...prev,
-          phase: "break",
-          status: "idle",
-          targetEndTimeMs: undefined,
-          remainingSeconds: breakSecs,
-        };
-      } else {
-        const focusSecs = prev.focusMinutes * 60;
-        return {
-          ...prev,
-          phase: "focus",
-          status: "idle",
-          targetEndTimeMs: undefined,
-          remainingSeconds: focusSecs,
-        };
-      }
-    });
-  }, []);
+    if (store.sessionType === "focus") {
+      store.completeSession();
+    } else {
+      store.skipBreak();
+    }
+  }, [store]);
 
   const setPreset = useCallback(
     (preset: PomodoroPreset, customFocus?: number, customBreak?: number) => {
-      let fMins = 25;
-      let bMins = 5;
-
-      if (preset === "25-5") {
-        fMins = 25;
-        bMins = 5;
-      } else if (preset === "50-10") {
-        fMins = 50;
-        bMins = 10;
-      } else if (preset === "custom") {
-        fMins = customFocus && customFocus > 0 ? customFocus : 30;
-        bMins = customBreak && customBreak > 0 ? customBreak : 5;
+      if (preset === "25-5" || (preset as string) === "25_5") {
+        store.setPreset("25_5");
+      } else if (preset === "50-10" || (preset as string) === "50_10") {
+        store.setPreset("50_10");
+      } else {
+        store.setPreset("custom", {
+          focusDurationMinutes: customFocus && customFocus > 0 ? customFocus : 30,
+          shortBreakDurationMinutes: customBreak && customBreak > 0 ? customBreak : 5,
+        });
       }
-
-      setState((prev) => {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        const secs = prev.phase === "focus" ? fMins * 60 : bMins * 60;
-        return {
-          ...prev,
-          preset,
-          focusMinutes: fMins,
-          breakMinutes: bMins,
-          status: "idle",
-          targetEndTimeMs: undefined,
-          remainingSeconds: secs,
-        };
-      });
     },
-    []
+    [store]
   );
 
   const toggleSound = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      soundEnabled: !prev.soundEnabled,
-    }));
-  }, []);
+    store.updateSettings({ soundEnabled: !store.settings.soundEnabled });
+  }, [store]);
 
   const openFocusModal = useCallback(() => {
-    setIsFocusModalOpen(true);
-  }, []);
+    store.setFocusModeOpen(true);
+  }, [store]);
 
   const closeFocusModal = useCallback(() => {
-    setIsFocusModalOpen(false);
-  }, []);
+    store.setFocusModeOpen(false);
+  }, [store]);
 
   return (
     <PomodoroContext.Provider
       value={{
         state,
-        isFocusModalOpen,
+        isFocusModalOpen: store.isFocusModeOpen,
         startPomodoro,
         pausePomodoro,
         resumePomodoro,

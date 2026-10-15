@@ -144,7 +144,7 @@ export interface CalendarContextType {
   deletePlannerException: (id: string) => void;
 
   focusSessions: FocusSession[];
-  addFocusSession: (session: Omit<FocusSession, "id">) => FocusSession;
+  addFocusSession: (session: Omit<FocusSession, "id"> & { id?: string }) => FocusSession;
 }
 
 const CalendarContext = createContext<CalendarContextType | null>(null);
@@ -1200,15 +1200,30 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
   );
 
   const addFocusSession = useCallback(
-    (session: Omit<FocusSession, "id">): FocusSession => {
+    (session: Omit<FocusSession, "id"> & { id?: string }): FocusSession => {
+      const sessionId = session.id || `focus-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const newSession: FocusSession = {
         ...session,
-        id: `focus-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: sessionId,
       };
-      updateAndPersist((prev) => ({
-        ...prev,
-        focusSessions: [...(prev.focusSessions || []), newSession],
-      }));
+      updateAndPersist((prev) => {
+        const existing = prev.focusSessions || [];
+        if (
+          existing.some(
+            (s) =>
+              s.id === sessionId ||
+              (Boolean(s.sessionId) &&
+                Boolean(session.sessionId) &&
+                s.sessionId === session.sessionId)
+          )
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          focusSessions: [...existing, newSession],
+        };
+      });
       return newSession;
     },
     [updateAndPersist]
