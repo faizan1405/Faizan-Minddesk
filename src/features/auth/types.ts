@@ -27,6 +27,12 @@ import type {
   NotificationPreferences,
   NotificationRecord,
 } from "@/features/notifications/types";
+import type {
+  PlannerCategory,
+  PlannerRoutine,
+  PlannerRoutineException,
+  FocusSession,
+} from "@/features/planner/types";
 
 export interface ProfilePreferencesJson {
   _version?: number;
@@ -52,6 +58,10 @@ export interface ProfilePreferencesJson {
   planner?: {
     scheduledBlocks?: ScheduledTaskBlock[];
     dailyPlans?: Record<string, DailyPlan>;
+    categories?: PlannerCategory[];
+    routines?: PlannerRoutine[];
+    exceptions?: PlannerRoutineException[];
+    focusSessions?: FocusSession[];
   };
   habits?: {
     habits?: Habit[];

@@ -351,6 +351,18 @@ export async function getWorkspaceDeskData(
       typeof prefs.planner?.dailyPlans === "object" && prefs.planner?.dailyPlans !== null
         ? prefs.planner.dailyPlans
         : {},
+    plannerCategories: Array.isArray(prefs.planner?.categories)
+      ? prefs.planner.categories
+      : undefined,
+    plannerRoutines: Array.isArray(prefs.planner?.routines)
+      ? prefs.planner.routines
+      : undefined,
+    plannerExceptions: Array.isArray(prefs.planner?.exceptions)
+      ? prefs.planner.exceptions
+      : undefined,
+    focusSessions: Array.isArray(prefs.planner?.focusSessions)
+      ? prefs.planner.focusSessions
+      : undefined,
     habits: Array.isArray(prefs.habits?.habits) ? prefs.habits.habits : [],
     habitCompletions: Array.isArray(prefs.habits?.habitCompletions)
       ? prefs.habits.habitCompletions
@@ -508,6 +520,18 @@ export function reconcileProfilePreferences(
           : {}),
         ...(incomingData.dailyPlans !== undefined
           ? { dailyPlans: incomingData.dailyPlans }
+          : {}),
+        ...(incomingData.plannerCategories !== undefined
+          ? { categories: incomingData.plannerCategories }
+          : {}),
+        ...(incomingData.plannerRoutines !== undefined
+          ? { routines: incomingData.plannerRoutines }
+          : {}),
+        ...(incomingData.plannerExceptions !== undefined
+          ? { exceptions: incomingData.plannerExceptions }
+          : {}),
+        ...(incomingData.focusSessions !== undefined
+          ? { focusSessions: incomingData.focusSessions }
           : {}),
       },
       habits: {
@@ -704,6 +728,26 @@ export function reconcileProfilePreferences(
         ...(currentPrefs.planner?.dailyPlans || {}),
         ...(incomingData.dailyPlans || {}),
       },
+      categories: reconcileEntities(
+        currentPrefs.planner?.categories,
+        incomingData.plannerCategories,
+        new Set()
+      ),
+      routines: reconcileEntities(
+        currentPrefs.planner?.routines,
+        incomingData.plannerRoutines,
+        new Set()
+      ),
+      exceptions: reconcileEntities(
+        currentPrefs.planner?.exceptions,
+        incomingData.plannerExceptions,
+        new Set()
+      ),
+      focusSessions: reconcileEntities(
+        currentPrefs.planner?.focusSessions,
+        incomingData.focusSessions,
+        new Set()
+      ),
     },
     habits: {
       ...(currentPrefs.habits || {}),

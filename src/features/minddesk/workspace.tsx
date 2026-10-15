@@ -42,6 +42,7 @@ import { NotificationBell } from "@/features/notifications/components/notificati
 import { MapsView, NotesView, ProjectsView } from "./library-views";
 import { TasksView } from "./tasks-view";
 import { SettingsView } from "@/features/settings";
+import { MiniTimer, FocusModeView } from "@/features/pomodoro";
 import { workspaceRoutes, workspaceTitles, type WorkspaceView } from "./workspace-types";
 import type { TaskItem } from "./types";
 
@@ -336,6 +337,12 @@ function Workspace({ initialView }: { initialView: WorkspaceView }) {
             />
           )}
         </div>
+        {view !== "plan-your-day" && (
+          <>
+            <MiniTimer />
+            <FocusModeView />
+          </>
+        )}
         <nav
           aria-label="Mobile navigation"
           className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-border bg-card/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1 backdrop-blur md:hidden"

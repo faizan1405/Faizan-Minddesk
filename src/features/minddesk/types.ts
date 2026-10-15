@@ -165,5 +165,9 @@ export interface DeskData {
   routineSessions?: RoutineSession[];
   notifications?: NotificationRecord[];
   notificationPreferences?: NotificationPreferences;
+  plannerCategories?: import("@/features/planner/types").PlannerCategory[];
+  plannerRoutines?: import("@/features/planner/types").PlannerRoutine[];
+  plannerExceptions?: import("@/features/planner/types").PlannerRoutineException[];
+  focusSessions?: import("@/features/planner/types").FocusSession[];
 }
 

@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useCalendar } from "@/features/calendar/calendar-context";
-import { format } from "date-fns";
+import { format, addDays, subDays, parseISO } from "date-fns";
 import Link from "next/link";
 import {
   Sparkles,
@@ -11,6 +11,11 @@ import {
   ListTodo,
   FileText,
   Flame,
+  ChevronLeft,
+  ChevronRight,
+  Tag,
+  Repeat,
+  Brain,
 } from "lucide-react";
 import { ScheduleHabitDialog } from "@/features/habits/components/schedule-habit-dialog";
 import { TodaysPrioritiesShelf } from "./todays-priorities-shelf";
@@ -18,10 +23,26 @@ import { DailyProgressCard } from "./daily-progress-card";
 import { MyTasksPanel } from "./my-tasks-panel";
 import { MyScheduleTimeline } from "./my-schedule-timeline";
 import { TimeBlockEditorModal } from "./time-block-editor-modal";
+import { VisualDayMap } from "./visual-day-map";
+import { PlannerCategoriesModal } from "./planner-categories-modal";
+import { PlannerRoutinesModal } from "./planner-routines-modal";
+import { PomodoroProvider, usePomodoro } from "../pomodoro-context";
+import { PomodoroFocusView } from "./pomodoro-focus-view";
 import { PlannerTask } from "@/features/calendar/types";
+import { generateFixedRoutineBlocks } from "../services/smart-scheduler";
 
-export function DailyPlannerWorkspace() {
-  const { isLoaded, getDailyPlan, updateDailyNotes } = useCalendar();
+function DailyPlannerWorkspaceContent() {
+  const {
+    isLoaded,
+    getDailyPlan,
+    updateDailyNotes,
+    scheduledBlocks,
+    plannerRoutines,
+    plannerExceptions,
+    plannerCategories,
+  } = useCalendar();
+
+  const { openFocusModal } = usePomodoro();
 
   const [currentDateStr, setCurrentDateStr] = useState(
     format(new Date(), "yyyy-MM-dd")
@@ -30,20 +51,43 @@ export function DailyPlannerWorkspace() {
   // Mobile view tab: 'tasks' | 'schedule'
   const [mobileTab, setMobileTab] = useState<"tasks" | "schedule">("schedule");
 
-  // Modals
+  // Modals state
   const [editorOpen, setEditorOpen] = useState(false);
   const [taskToSchedule, setTaskToSchedule] = useState<PlannerTask | null>(null);
   const [scheduleHabitOpen, setScheduleHabitOpen] = useState(false);
+  const [categoriesModalOpen, setCategoriesModalOpen] = useState(false);
+  const [routinesModalOpen, setRoutinesModalOpen] = useState(false);
+
+  // Initial time for editor when clicking a cube
+  const [editorInitialTime, setEditorInitialTime] = useState<string>("10:00");
 
   // Daily intention / notes
   const plan = getDailyPlan(currentDateStr);
   const [dailyNotes, setDailyNotes] = useState(plan.notes || "");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
 
+  // Combine user scheduled blocks + generated fixed recurring routines for Day Map
+  const allDayBlocks = useMemo(() => {
+    const fixed = generateFixedRoutineBlocks(
+      currentDateStr,
+      plannerRoutines,
+      plannerExceptions,
+      plannerCategories
+    );
+    const combined = [...scheduledBlocks];
+    for (const fix of fixed) {
+      if (!combined.some((b) => b.id === fix.id || (b.recurringSeriesId && b.recurringSeriesId === fix.recurringSeriesId))) {
+        combined.push(fix);
+      }
+    }
+    return combined;
+  }, [scheduledBlocks, currentDateStr, plannerRoutines, plannerExceptions, plannerCategories]);
+
   if (!isLoaded) {
     return (
       <div className="space-y-4">
         <div className="h-20 w-full rounded-2xl bg-muted/60 skeleton-shimmer" />
+        <div className="h-44 w-full rounded-2xl bg-muted/60 skeleton-shimmer" />
         <div className="h-28 w-full rounded-2xl bg-muted/60 skeleton-shimmer" />
         <div className="h-[650px] w-full rounded-2xl bg-muted/60 skeleton-shimmer" />
       </div>
@@ -52,6 +96,13 @@ export function DailyPlannerWorkspace() {
 
   const handleOpenScheduleForTask = (task: PlannerTask) => {
     setTaskToSchedule(task);
+    setEditorInitialTime("10:00");
+    setEditorOpen(true);
+  };
+
+  const handleSelectCubeTimeSlot = (timeHHMM: string) => {
+    setTaskToSchedule(null);
+    setEditorInitialTime(timeHHMM);
     setEditorOpen(true);
   };
 
@@ -60,10 +111,32 @@ export function DailyPlannerWorkspace() {
     setIsEditingNotes(false);
   };
 
+  const handlePrevDay = () => {
+    try {
+      const d = parseISO(currentDateStr);
+      setCurrentDateStr(format(subDays(d, 1), "yyyy-MM-dd"));
+    } catch {
+      // Fallback
+    }
+  };
+
+  const handleNextDay = () => {
+    try {
+      const d = parseISO(currentDateStr);
+      setCurrentDateStr(format(addDays(d, 1), "yyyy-MM-dd"));
+    } catch {
+      // Fallback
+    }
+  };
+
+  const handleToday = () => {
+    setCurrentDateStr(format(new Date(), "yyyy-MM-dd"));
+  };
+
   return (
     <div className="space-y-4 sm:space-y-5">
       {/* Top Banner Header */}
-      <header className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-xs sm:flex-row sm:items-center sm:justify-between">
+      <header className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-xs lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Link
@@ -87,8 +160,67 @@ export function DailyPlannerWorkspace() {
           </p>
         </div>
 
-        {/* Daily Intention Button & Schedule Habit Button */}
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+        {/* Date Navigator & Action Controls */}
+        <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+          {/* Day Navigator */}
+          <div className="flex items-center rounded-xl bg-muted p-1 border border-border">
+            <button
+              type="button"
+              onClick={handlePrevDay}
+              className="p-1 rounded-lg text-muted-foreground hover:bg-background hover:text-foreground transition-colors cursor-pointer"
+              title="Previous Day"
+            >
+              <ChevronLeft size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={handleToday}
+              className="px-2.5 py-1 text-xs font-bold text-foreground hover:bg-background rounded-lg transition-colors cursor-pointer"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={handleNextDay}
+              className="p-1 rounded-lg text-muted-foreground hover:bg-background hover:text-foreground transition-colors cursor-pointer"
+              title="Next Day"
+            >
+              <ChevronRight size={15} />
+            </button>
+          </div>
+
+          {/* Pomodoro Focus Mode button */}
+          <button
+            type="button"
+            onClick={openFocusModal}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/20 shadow-2xs transition-all cursor-pointer"
+            title="Launch Distraction-Free Pomodoro Focus Mode"
+          >
+            <Brain size={14} />
+            <span>Focus Mode</span>
+          </button>
+
+          {/* Categories Modal Button */}
+          <button
+            type="button"
+            onClick={() => setCategoriesModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted shadow-2xs transition-all cursor-pointer"
+          >
+            <Tag size={13} />
+            <span>Categories</span>
+          </button>
+
+          {/* Routines Modal Button */}
+          <button
+            type="button"
+            onClick={() => setRoutinesModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted shadow-2xs transition-all cursor-pointer"
+          >
+            <Repeat size={13} />
+            <span>Routines</span>
+          </button>
+
+          {/* Daily Intention Button & Schedule Habit Button */}
           <button
             type="button"
             onClick={() => setScheduleHabitOpen(true)}
@@ -97,6 +229,7 @@ export function DailyPlannerWorkspace() {
             <Flame size={14} className="text-orange-500" />
             <span>Schedule Habit</span>
           </button>
+
           <button
             type="button"
             onClick={() => setIsEditingNotes(!isEditingNotes)}
@@ -133,16 +266,24 @@ export function DailyPlannerWorkspace() {
         </div>
       )}
 
-      {/* Daily Progress & Analytics Header (Section 11) */}
+      {/* THE CENTERPIECE: 24-HOUR VISUAL DAY MAP (48 Cubes across 4 Chronological Rows of 12) */}
+      <VisualDayMap
+        currentDateStr={currentDateStr}
+        allBlocks={allDayBlocks}
+        onSelectTimeSlot={handleSelectCubeTimeSlot}
+        onManageCategories={() => setCategoriesModalOpen(true)}
+      />
+
+      {/* Daily Progress & Analytics Header */}
       <DailyProgressCard currentDateStr={currentDateStr} />
 
-      {/* Today's Top 3 Priorities Shelf (Section 10) */}
+      {/* Today's Top 3 Priorities Shelf */}
       <TodaysPrioritiesShelf
         currentDateStr={currentDateStr}
         onOpenSchedule={handleOpenScheduleForTask}
       />
 
-      {/* Mobile Tab Switcher (Section 14) */}
+      {/* Mobile Tab Switcher */}
       <div className="flex items-center rounded-xl bg-muted p-1 border border-border lg:hidden">
         <button
           type="button"
@@ -170,7 +311,7 @@ export function DailyPlannerWorkspace() {
         </button>
       </div>
 
-      {/* Two-Panel Workspace Grid (Section 2: Left 30% / Right 70% dominant) */}
+      {/* Two-Panel Workspace Grid (Left 30% / Right 70% dominant) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
         {/* Left Panel: Task Library (~30% / 4 columns) */}
         <div
@@ -202,7 +343,7 @@ export function DailyPlannerWorkspace() {
         isOpen={editorOpen}
         block={null}
         initialDate={currentDateStr}
-        initialStartTime="10:00"
+        initialStartTime={editorInitialTime}
         initialDurationMinutes={taskToSchedule?.estimatedMinutes || 60}
         initialTaskId={taskToSchedule?.id}
         onClose={() => {
@@ -217,6 +358,30 @@ export function DailyPlannerWorkspace() {
         defaultDate={currentDateStr}
         onClose={() => setScheduleHabitOpen(false)}
       />
+
+      {/* Categories Manager Modal */}
+      <PlannerCategoriesModal
+        isOpen={categoriesModalOpen}
+        onClose={() => setCategoriesModalOpen(false)}
+      />
+
+      {/* Recurring Routines Manager Modal */}
+      <PlannerRoutinesModal
+        isOpen={routinesModalOpen}
+        onClose={() => setRoutinesModalOpen(false)}
+        currentDateStr={currentDateStr}
+      />
+
+      {/* Integrated Persistent Pomodoro Mini-Timer & Focus Mode Modal */}
+      <PomodoroFocusView />
     </div>
+  );
+}
+
+export function DailyPlannerWorkspace() {
+  return (
+    <PomodoroProvider>
+      <DailyPlannerWorkspaceContent />
+    </PomodoroProvider>
   );
 }

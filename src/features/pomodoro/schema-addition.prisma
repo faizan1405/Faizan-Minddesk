@@ -1,0 +1,55 @@
+// =============================================================================
+// MINDDESK PRISMA SCHEMA ADDITIONS FOR POMODORO & FOCUS SUBSYSTEM
+// Safe addition to prisma/schema.prisma when database migrations are approved.
+// =============================================================================
+
+model FocusSession {
+  id                    String              @id @default(uuid()) @db.VarChar(36)
+  workspaceId           String              @map("workspace_id") @db.VarChar(36)
+  userId                String              @map("user_id") @db.VarChar(36)
+  sessionId             String              @map("session_id") @db.VarChar(64)
+  blockId               String?             @map("block_id") @db.VarChar(36)
+  blockTitle            String              @map("block_title") @db.VarChar(500)
+  categoryColor         String?             @map("category_color") @db.VarChar(32)
+  sessionType           String              @default("focus") @map("session_type") @db.VarChar(32)
+  plannedDurationMinutes Int                @default(25) @map("planned_duration_minutes")
+  actualDurationSeconds Int                 @default(0) @map("actual_duration_seconds")
+  startedAt             DateTime            @map("started_at")
+  completedAt           DateTime            @map("completed_at")
+  isCompleted           Boolean             @default(true) @map("is_completed")
+  notes                 String?             @db.Text
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                  Profile             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, sessionId, completedAt], map: "uq_focus_sessions_session_token")
+  @@index([workspaceId], map: "idx_focus_sessions_workspace")
+  @@index([userId], map: "idx_focus_sessions_user")
+  @@index([blockId], map: "idx_focus_sessions_block")
+  @@index([startedAt], map: "idx_focus_sessions_started_at")
+  @@map("focus_sessions")
+}
+
+model PomodoroPreference {
+  userId                    String          @map("user_id") @db.VarChar(36)
+  workspaceId               String          @map("workspace_id") @db.VarChar(36)
+  focusDurationMinutes      Int             @default(25) @map("focus_duration_minutes")
+  shortBreakDurationMinutes Int             @default(5) @map("short_break_duration_minutes")
+  longBreakDurationMinutes  Int             @default(15) @map("long_break_duration_minutes")
+  longBreakInterval         Int             @default(4) @map("long_break_interval")
+  autoStartBreaks           Boolean         @default(false) @map("auto_start_breaks")
+  autoStartFocus            Boolean         @default(false) @map("auto_start_focus")
+  soundEnabled              Boolean         @default(true) @map("sound_enabled")
+  soundVolume               Float           @default(0.7) @map("sound_volume") @db.Double
+  notificationsEnabled      Boolean         @default(false) @map("notifications_enabled")
+  createdAt                 DateTime        @default(now()) @map("created_at")
+  updatedAt                 DateTime        @updatedAt @map("updated_at")
+
+  workspace                 Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                      Profile         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, workspaceId])
+  @@map("pomodoro_preferences")
+}
