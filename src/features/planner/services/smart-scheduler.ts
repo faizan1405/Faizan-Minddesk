@@ -90,8 +90,7 @@ export function mergeIntervals(
 export function checkIntervalCollision(
   start: number,
   end: number,
-  occupied: Array<{ start: number; end: number }>,
-  excludeId?: string
+  occupied: Array<{ start: number; end: number }>
 ): boolean {
   for (const interval of occupied) {
     if (start < interval.end && end > interval.start) {
@@ -134,7 +133,7 @@ export function calculateDayMapCubes(
   // 1. Process today's blocks
   for (const block of todaysBlocks) {
     const startMins = parseHHMM(block.startTime);
-    let endMins = parseHHMM(block.endTime);
+    const endMins = parseHHMM(block.endTime);
 
     // If overnight block (e.g. 23:00 to 07:00)
     if (endMins <= startMins && block.durationMinutes > 0) {

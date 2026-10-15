@@ -1,8 +1,4 @@
-import type {
-  RecurrenceRule,
-  ScheduledTaskBlock,
-  TimeBlockType,
-} from "@/features/calendar/types";
+import type { ScheduledTaskBlock } from "@/features/calendar/types";
 
 export type TimeBlockStatus =
   | "suggested"

@@ -97,7 +97,7 @@ export interface CalendarContextType {
 
   // Scheduled Task Blocks
   scheduleTaskBlock: (
-    taskId?: string,
+    taskIdOrPayload?: string | (Partial<ScheduledTaskBlock> & { title?: string }),
     date?: string,
     startTime?: string,
     durationMinutes?: number,
@@ -746,38 +746,53 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
   // Scheduled Task Blocks
   const scheduleTaskBlock = useCallback(
     (
-      taskId?: string,
+      taskIdOrPayload?: string | (Partial<ScheduledTaskBlock> & { title?: string }),
       date = format(new Date(), "yyyy-MM-dd"),
       startTime = "10:00",
       durationMinutes = 60,
       options?: Partial<ScheduledTaskBlock>
     ): ScheduledTaskBlock => {
-      const task = taskId ? tasks.find((t) => t.id === taskId) : null;
-      const [h, m] = startTime.split(":").map(Number);
+      let resolvedTaskId = typeof taskIdOrPayload === "string" ? taskIdOrPayload : undefined;
+      let resolvedDate = date;
+      let resolvedStartTime = startTime;
+      let resolvedDuration = durationMinutes;
+      let resolvedOptions: Partial<ScheduledTaskBlock> = options || {};
+
+      if (typeof taskIdOrPayload === "object" && taskIdOrPayload !== null) {
+        const payload = taskIdOrPayload;
+        resolvedTaskId = payload.taskId;
+        resolvedDate = payload.date || format(new Date(), "yyyy-MM-dd");
+        resolvedStartTime = payload.startTime || "10:00";
+        resolvedDuration = payload.durationMinutes || 60;
+        resolvedOptions = payload;
+      }
+
+      const task = resolvedTaskId ? tasks.find((t) => t.id === resolvedTaskId) : null;
+      const [h, m] = resolvedStartTime.split(":").map(Number);
       const startMins = (isNaN(h) ? 10 : h) * 60 + (isNaN(m) ? 0 : m);
-      const endMins = startMins + durationMinutes;
+      const endMins = startMins + resolvedDuration;
       const endHour = Math.floor(endMins / 60) % 24;
       const endMinute = endMins % 60;
       const computedEndTime = `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
 
       const now = new Date().toISOString();
       const newBlock: ScheduledTaskBlock = {
-        id: options?.id || `block-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        taskId: taskId || options?.taskId,
-        title: options?.title || (task ? task.title : "Focus Work Session"),
-        date,
-        startTime,
-        endTime: options?.endTime || computedEndTime,
-        durationMinutes,
-        color: options?.color || (task?.priority === "urgent" ? "#ef4444" : "#2563eb"),
-        completed: options?.completed !== undefined ? options.completed : (task ? task.completed : false),
-        description: options?.description || task?.description || task?.note || "",
-        blockType: options?.blockType || "focus",
-        recurrence: options?.recurrence,
+        id: resolvedOptions?.id || `block-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        taskId: resolvedTaskId || resolvedOptions?.taskId,
+        title: resolvedOptions?.title || (task ? task.title : "Focus Work Session"),
+        date: resolvedDate,
+        startTime: resolvedStartTime,
+        endTime: resolvedOptions?.endTime || computedEndTime,
+        durationMinutes: resolvedDuration,
+        color: resolvedOptions?.color || (task?.priority === "urgent" ? "#ef4444" : "#2563eb"),
+        completed: resolvedOptions?.completed !== undefined ? resolvedOptions.completed : (task ? task.completed : false),
+        description: resolvedOptions?.description || task?.description || task?.note || "",
+        blockType: resolvedOptions?.blockType || "focus",
+        recurrence: resolvedOptions?.recurrence,
         createdAt: now,
         updatedAt: now,
+        ...resolvedOptions,
       };
-
       updateAndPersist((prev) => ({
         ...prev,
         scheduledBlocks: [...(prev.scheduledBlocks || []), newBlock],

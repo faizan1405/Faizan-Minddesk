@@ -6,8 +6,6 @@ import {
   calculateDayMapCubes,
   calculateDailyTimeSummary,
   scheduleFlexibleRoutines,
-  generateFixedRoutineBlocks,
-  mergeIntervals,
 } from "../services/smart-scheduler";
 import {
   DEFAULT_PLANNER_CATEGORIES,

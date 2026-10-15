@@ -20,13 +20,20 @@ interface DailyProgressCardProps {
 }
 
 export function DailyProgressCard({ currentDateStr }: DailyProgressCardProps) {
-  const { tasks, scheduledBlocks, getEventsForRange, getDailyPlan } = useCalendar();
+  const { tasks, scheduledBlocks, getEventsForRange, getDailyPlan, focusSessions } = useCalendar();
 
   const plan = getDailyPlan(currentDateStr);
   const priorityIds = useMemo(
     () => new Set(plan.topPriorityTaskIds || []),
     [plan.topPriorityTaskIds]
   );
+
+  // Actual focused time recorded via Pomodoro sessions for this date
+  const actualFocusedMinutes = useMemo(() => {
+    return (focusSessions || [])
+      .filter((s) => s.date === currentDateStr)
+      .reduce((acc, curr) => acc + (curr.focusedMinutes || 0), 0);
+  }, [focusSessions, currentDateStr]);
 
   // Today's tasks (either marked priority or due today)
   const todayTasks = useMemo(() => {
@@ -144,17 +151,17 @@ export function DailyProgressCard({ currentDateStr }: DailyProgressCardProps) {
         </p>
       </div>
 
-      {/* Metric 3: Focus Hours */}
+      {/* Metric 3: Focus Hours (Separating Planned Hours from Actual Focused Minutes) */}
       <div className="rounded-xl border border-border bg-card text-card-foreground p-3 sm:p-3.5 shadow-2xs">
         <div className="flex items-center justify-between text-muted-foreground">
           <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Focus Work</span>
           <Brain size={14} className="text-indigo-500" />
         </div>
         <p className="mt-1 text-base sm:text-xl font-extrabold text-indigo-600 dark:text-indigo-400">
-          {formatHoursMinutes(focusMinutes)}
+          {formatHoursMinutes(actualFocusedMinutes)}
         </p>
         <p className="mt-1 text-[10px] text-muted-foreground font-medium">
-          {dayBlocks.length} deep focus {dayBlocks.length === 1 ? "block" : "blocks"}
+          Planned: {formatHoursMinutes(focusMinutes)}
         </p>
       </div>
 
