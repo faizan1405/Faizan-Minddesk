@@ -36,6 +36,8 @@ interface SmartZoomTimelineProps {
   onDateChange?: (dateStr: string) => void;
   selectedTimeSlot?: string | null;
   onClearSelectedTimeSlot?: () => void;
+  taskToSchedule?: { id?: string; title: string; estimatedMinutes?: number } | null;
+  onClearTaskToSchedule?: () => void;
 }
 
 const WINDOW_FILTERS: Array<{ id: ZoomTimeWindow; label: string; startHour: number; endHour: number }> = [
@@ -50,6 +52,8 @@ export function SmartZoomTimeline({
   currentDateStr,
   selectedTimeSlot,
   onClearSelectedTimeSlot,
+  taskToSchedule,
+  onClearTaskToSchedule,
 }: SmartZoomTimelineProps) {
   const {
     scheduledBlocks,
@@ -108,6 +112,18 @@ export function SmartZoomTimeline({
       if (onClearSelectedTimeSlot) onClearSelectedTimeSlot();
     }
   }, [selectedTimeSlot, hourHeight, onClearSelectedTimeSlot]);
+
+  // React to task to schedule from Priorities shelf
+  useEffect(() => {
+    if (taskToSchedule) {
+      setBlockTitle(taskToSchedule.title);
+      setBlockDuration(taskToSchedule.estimatedMinutes || 60);
+      setBlockStartTime("10:00");
+      setEditingBlock(null);
+      setIsEditorOpen(true);
+      if (onClearTaskToSchedule) onClearTaskToSchedule();
+    }
+  }, [taskToSchedule, onClearTaskToSchedule]);
 
   // Active window hours
   const activeWindowConfig = useMemo(() => {
@@ -742,6 +758,9 @@ export function SmartZoomTimeline({
                     <option value={120}>2 hours</option>
                     <option value={180}>3 hours</option>
                     <option value={240}>4 hours</option>
+                    <option value={300}>5 hours</option>
+                    <option value={360}>6 hours</option>
+                    <option value={480}>8 hours</option>
                   </select>
                 </div>
               </div>

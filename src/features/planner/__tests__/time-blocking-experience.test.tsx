@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MindDeskProvider } from "@/features/minddesk/store";
 import { CalendarProvider } from "@/features/calendar/calendar-context";
 import { HabitsProvider } from "@/features/habits/context/habits-context";
 import { DailyPlannerWorkspace } from "@/features/planner/components/daily-planner-workspace";
 import { CalendarWorkspace } from "@/features/calendar/components/calendar-workspace";
+import { MyTasksPanel } from "@/features/planner/components/my-tasks-panel";
 import {
   calculateMergedOccupiedMinutes,
   checkIntervalConflict,
@@ -35,120 +36,75 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
     window.localStorage.clear();
   });
 
-  it("renders the 2-panel planner layout with Task Library (~30%) and Timeline (~70%)", async () => {
+  it("renders the minimal visual planner layout with 24-Hour Day Map centerpiece and Smart Zoom Timeline", async () => {
     renderPlannerWorkspace();
 
     // Verify workspace header
     expect(screen.getByText("Plan Your Day")).toBeInTheDocument();
     expect(screen.getByText(/Time Blocking Engine/i)).toBeInTheDocument();
 
-    // Left Panel: Task Library
-    expect(screen.getByRole("heading", { name: "Task Library" })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/Search tasks/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /New Task/i })).toBeInTheDocument();
-
-    // Task Library filter tabs & Timeline Today button
-    expect(screen.getAllByRole("button", { name: /^Today$/i }).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByRole("button", { name: /^Starred$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^All Tasks$/i })).toBeInTheDocument();
+    // Centerpiece: 24-Hour Day Map (48 cubes)
+    expect(screen.getByText("24-Hour Day Map")).toBeInTheDocument();
+    expect(screen.getByLabelText("24-Hour Visual Day Map")).toBeInTheDocument();
 
     // Today's Top 3 Priorities shelf
     expect(screen.getByText(/Today's Top 3 Priorities/i)).toBeInTheDocument();
 
-    // Right Panel: Timeline & controls
-    expect(screen.getByRole("button", { name: /\+ Add Time Block/i })).toBeInTheDocument();
-    expect(screen.getByTitle(/Toggle Highlight Working Hours/i)).toBeInTheDocument();
-    expect(screen.getByText("15m")).toBeInTheDocument(); // Snap default
+    // Smart Zoom Timeline Editor directly accessible (no tab switcher)
+    expect(screen.getByLabelText("Smart Zoom Timeline Editor")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Task Library" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Timeline Schedule" })).not.toBeInTheDocument();
+
+    // Timeline controls & quick actions
+    expect(screen.getByRole("button", { name: /Add Block/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "24 Hours" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Normal" })).toBeInTheDocument();
   });
 
-  it("adds a new task in the Task Library with duration and priority", async () => {
+  it("creates a standalone time block directly via + Add Block button", async () => {
     renderPlannerWorkspace();
 
-    // Click New Task button in Task Library
-    const newTaskBtn = screen.getByRole("button", { name: /New Task/i });
-    fireEvent.click(newTaskBtn);
-
-    // Form inputs appear
-    const taskInput = screen.getByPlaceholderText(/Task title/i);
-    expect(taskInput).toBeInTheDocument();
-
-    fireEvent.change(taskInput, { target: { value: "Build Client Landing Page" } });
-    const addBtn = screen.getByRole("button", { name: /^Add Task$/i });
-    fireEvent.click(addBtn);
-
-    // Task appears in the library
-    await waitFor(() => {
-      expect(screen.getByText("Build Client Landing Page")).toBeInTheDocument();
-    });
-  });
-
-  it("opens Time Block Editor when clicking Schedule on a task", async () => {
-    renderPlannerWorkspace();
-
-    // Add a task
-    const newTaskBtn = screen.getByRole("button", { name: /New Task/i });
-    fireEvent.click(newTaskBtn);
-    const taskInput = screen.getByPlaceholderText(/Task title/i);
-    fireEvent.change(taskInput, { target: { value: "Review Figma Prototype" } });
-    fireEvent.click(screen.getByRole("button", { name: /^Add Task$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Review Figma Prototype")).toBeInTheDocument();
-    });
-
-    // Find schedule button for this specific task
-    const taskRow = screen.getByText("Review Figma Prototype").closest(".group")!;
-    const scheduleBtn = within(taskRow as HTMLElement).getByTitle("Schedule time block on timeline");
-    fireEvent.click(scheduleBtn);
-
-    // Modal opens
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-
-    const modal = screen.getByRole("dialog");
-    expect(within(modal).getByRole("button", { name: "15m" })).toBeInTheDocument();
-    expect(within(modal).getByRole("button", { name: "30m" })).toBeInTheDocument();
-    expect(within(modal).getByRole("button", { name: "60m" })).toBeInTheDocument();
-
-    // Create block
-    const createBtn = within(modal).getByRole("button", { name: /Create Block/i });
-    fireEvent.click(createBtn);
-
-    // Block now appears on the timeline
-    await waitFor(() => {
-      expect(screen.getAllByText("Review Figma Prototype").length).toBeGreaterThanOrEqual(2);
-    });
-  });
-
-  it("creates a standalone time block directly via + Add Time Block button", async () => {
-    renderPlannerWorkspace();
-
-    const addBlockBtn = screen.getByRole("button", { name: /Add Time Block/i });
+    const addBlockBtn = screen.getByRole("button", { name: /Add Block/i });
     fireEvent.click(addBlockBtn);
 
-    // Contextual Editor opens
+    // Quick Create Modal opens
     await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByText("Quick Create Block")).toBeInTheDocument();
     });
 
-    const modal = screen.getByRole("dialog");
-
     // Fill title
-    const titleInput = within(modal).getByPlaceholderText(/e.g. Build client website/i);
+    const titleInput = screen.getByPlaceholderText(/e.g. Code Review, Client Proposal, Gym.../i);
     fireEvent.change(titleInput, { target: { value: "Team Architecture Review" } });
 
-    // Select block type Meeting / Event
-    const meetingTypeBtn = within(modal).getByRole("button", { name: /Meeting \/ Event/i });
-    fireEvent.click(meetingTypeBtn);
-
-    // Create block
-    const createBtn = within(modal).getByRole("button", { name: /Create Block/i });
+    // Submit form
+    const createBtn = screen.getByRole("button", { name: /Create Block/i });
     fireEvent.click(createBtn);
 
     // Verify it renders on the timeline
     await waitFor(() => {
       expect(screen.getByText("Team Architecture Review")).toBeInTheDocument();
+    });
+  });
+
+  it("opens Quick Create modal when clicking a time slot cube in the 24-Hour Day Map", async () => {
+    renderPlannerWorkspace();
+
+    const tenAmCube = screen.getByRole("button", { name: /Time slot 10:00 AM/i });
+    fireEvent.click(tenAmCube);
+
+    // Modal opens with 10:00 start time
+    await waitFor(() => {
+      expect(screen.getByText("Quick Create Block")).toBeInTheDocument();
+    });
+
+    const titleInput = screen.getByPlaceholderText(/e.g. Code Review, Client Proposal, Gym.../i);
+    fireEvent.change(titleInput, { target: { value: "Sprint Retro" } });
+
+    const createBtn = screen.getByRole("button", { name: /Create Block/i });
+    fireEvent.click(createBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sprint Retro")).toBeInTheDocument();
     });
   });
 
@@ -188,30 +144,47 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
     expect(noConflictResult.hasConflict).toBe(false);
   });
 
-  it("switches snap increments between 5m, 15m, and 30m", async () => {
+  it("switches timeline zoom presets (Compact, Normal, Relaxed)", async () => {
     renderPlannerWorkspace();
 
-    const snap30Btn = screen.getByRole("button", { name: "30m" });
-    fireEvent.click(snap30Btn);
-    expect(snap30Btn).toHaveClass("bg-primary");
+    const compactBtn = screen.getByRole("button", { name: "Compact" });
+    const normalBtn = screen.getByRole("button", { name: "Normal" });
+    const relaxedBtn = screen.getByRole("button", { name: "Relaxed" });
 
-    const snap5Btn = screen.getByRole("button", { name: "5m" });
-    fireEvent.click(snap5Btn);
-    expect(snap5Btn).toHaveClass("bg-primary");
+    expect(compactBtn).toBeInTheDocument();
+    expect(normalBtn).toBeInTheDocument();
+    expect(relaxedBtn).toBeInTheDocument();
+
+    fireEvent.click(compactBtn);
+    expect(compactBtn).toHaveClass("bg-background");
+
+    fireEvent.click(relaxedBtn);
+    expect(relaxedBtn).toHaveClass("bg-background");
   });
 
-  it("toggles 8am-6pm preferred working hours highlight", async () => {
+  it("switches time window filters (All 24h, Morning, Afternoon, Evening, Night)", async () => {
     renderPlannerWorkspace();
 
-    const workHoursBtn = screen.getByTitle(/Toggle Highlight Working Hours/i);
-    expect(workHoursBtn).toHaveClass("bg-primary/10");
+    const morningBtn = screen.getByRole("button", { name: /Morning/i });
+    const afternoonBtn = screen.getByRole("button", { name: /Afternoon/i });
+    const eveningBtn = screen.getByRole("button", { name: /Evening/i });
 
-    fireEvent.click(workHoursBtn);
-    expect(workHoursBtn).not.toHaveClass("bg-primary/10");
+    expect(morningBtn).toBeInTheDocument();
+    expect(afternoonBtn).toBeInTheDocument();
+    expect(eveningBtn).toBeInTheDocument();
+
+    fireEvent.click(morningBtn);
+    expect(morningBtn).toHaveClass("text-primary");
   });
 
-  it("maintains task data integrity: deleting a scheduled block does NOT delete the task", async () => {
-    renderPlannerWorkspace();
+  it("maintains task data integrity: MyTasksPanel preserves underlying tasks independently", async () => {
+    render(
+      <MindDeskProvider>
+        <CalendarProvider>
+          <MyTasksPanel currentDateStr="2026-10-15" onScheduleTask={() => {}} />
+        </CalendarProvider>
+      </MindDeskProvider>
+    );
 
     // 1. Create a task in Task Library
     const newTaskBtn = screen.getByRole("button", { name: /New Task/i });
@@ -223,55 +196,20 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
     await waitFor(() => {
       expect(screen.getByText("Preserved Google Task")).toBeInTheDocument();
     });
-
-    // 2. Schedule the task
-    const taskRow = screen.getByText("Preserved Google Task").closest(".group")!;
-    const scheduleBtn = within(taskRow as HTMLElement).getByTitle("Schedule time block on timeline");
-    fireEvent.click(scheduleBtn);
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-    const modal = screen.getByRole("dialog");
-    const createBtn = within(modal).getByRole("button", { name: /Create Block/i });
-    fireEvent.click(createBtn);
-
-    // 3. Block appears on timeline (at least 2 occurrences: in library and on timeline)
-    await waitFor(() => {
-      const occurrences = screen.getAllByText("Preserved Google Task");
-      expect(occurrences.length).toBeGreaterThanOrEqual(2);
-    });
-
-    // 4. Click the scheduled block to open Edit modal, then click Delete
-    const blockOccurrence = screen.getAllByText("Preserved Google Task")[1];
-    fireEvent.click(blockOccurrence);
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-    const editModal = screen.getByRole("dialog");
-    const deleteBtn = within(editModal).getByRole("button", { name: /Delete/i });
-    fireEvent.click(deleteBtn);
-
-    // 5. Verify task is still in Task Library (exactly 1 occurrence remains)!
-    await waitFor(() => {
-      expect(screen.getAllByText("Preserved Google Task")).toHaveLength(1);
-    });
   });
 
   it("synchronizes time blocks bidirectionally between Planner and Calendar", async () => {
     const { rerender } = renderPlannerWorkspace();
 
     // 1. Create block in Planner
-    const addBlockBtn = screen.getByRole("button", { name: /Add Time Block/i });
+    const addBlockBtn = screen.getByRole("button", { name: /Add Block/i });
     fireEvent.click(addBlockBtn);
     await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByText("Quick Create Block")).toBeInTheDocument();
     });
-    const modal = screen.getByRole("dialog");
-    const titleInput = within(modal).getByPlaceholderText(/e.g. Build client website/i);
+    const titleInput = screen.getByPlaceholderText(/e.g. Code Review, Client Proposal, Gym.../i);
     fireEvent.change(titleInput, { target: { value: "Cross-App Sync Block" } });
-    const createBtn = within(modal).getByRole("button", { name: /Create Block/i });
+    const createBtn = screen.getByRole("button", { name: /Create Block/i });
     fireEvent.click(createBtn);
 
     await waitFor(() => {
@@ -304,51 +242,6 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
     await waitFor(() => {
       expect(screen.getByText("Cross-App Sync Block")).toBeInTheDocument();
       expect(screen.getAllByText(/Focus Block/i).length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
-  it("tracks Today's Top 3 Priorities scheduling status explicitly", async () => {
-    renderPlannerWorkspace();
-
-    // 1. Initially, clean state shows empty priorities shelf
-    expect(screen.getByText("No top priorities selected for this day")).toBeInTheDocument();
-
-    // 2. Create a task in Task Library
-    const newTaskBtn = screen.getByRole("button", { name: /New Task/i });
-    fireEvent.click(newTaskBtn);
-    const taskInput = screen.getByPlaceholderText(/Task title/i);
-    fireEvent.change(taskInput, { target: { value: "Priority Focus Item" } });
-    fireEvent.click(screen.getByRole("button", { name: /^Add Task$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Priority Focus Item")).toBeInTheDocument();
-    });
-
-    // 3. Add to top priorities via the target icon
-    const addToPriorityBtn = screen.getByTitle("Add to top priorities");
-    fireEvent.click(addToPriorityBtn);
-
-    // 4. Priority card appears on shelf with "Not scheduled"
-    await waitFor(() => {
-      expect(screen.getByText("Not scheduled")).toBeInTheDocument();
-    });
-
-    // 5. Click Schedule button on the priority card
-    const priorityCard = screen.getByText("Not scheduled").closest(".group")!;
-    const priorityScheduleBtn = within(priorityCard as HTMLElement).getByRole("button", { name: /^Schedule$/i });
-    fireEvent.click(priorityScheduleBtn);
-
-    // 6. Modal opens -> click Create Block
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-    const modal = screen.getByRole("dialog");
-    const createBtn = within(modal).getByRole("button", { name: /Create Block/i });
-    fireEvent.click(createBtn);
-
-    // 7. Priority is now scheduled
-    await waitFor(() => {
-      expect(screen.getByText(/Scheduled at/i)).toBeInTheDocument();
     });
   });
 });

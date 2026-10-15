@@ -110,7 +110,7 @@ describe("Calendar & Daily Planner Integration (Phase 5)", () => {
     // Check main headers
     expect(screen.getByText("Plan Your Day")).toBeInTheDocument();
     expect(screen.getByText(/Today's Top 3 Priorities/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Task Library" })).toBeInTheDocument();
+    expect(screen.getByText("24-Hour Day Map")).toBeInTheDocument();
     expect(screen.getByText("Daily Intention")).toBeInTheDocument();
 
     // Check timeline shows Today button

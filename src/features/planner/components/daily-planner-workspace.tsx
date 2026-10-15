@@ -7,8 +7,6 @@ import Link from "next/link";
 import {
   Sparkles,
   ArrowLeft,
-  CalendarCheck2,
-  ListTodo,
   FileText,
   Flame,
   ChevronLeft,
@@ -20,9 +18,7 @@ import {
 import { ScheduleHabitDialog } from "@/features/habits/components/schedule-habit-dialog";
 import { TodaysPrioritiesShelf } from "./todays-priorities-shelf";
 import { DailyProgressCard } from "./daily-progress-card";
-import { MyTasksPanel } from "./my-tasks-panel";
-import { MyScheduleTimeline } from "./my-schedule-timeline";
-import { TimeBlockEditorModal } from "./time-block-editor-modal";
+import { SmartZoomTimeline } from "./smart-zoom-timeline";
 import { VisualDayMap } from "./visual-day-map";
 import { PlannerCategoriesModal } from "./planner-categories-modal";
 import { PlannerRoutinesModal } from "./planner-routines-modal";
@@ -48,18 +44,12 @@ function DailyPlannerWorkspaceContent() {
     format(new Date(), "yyyy-MM-dd")
   );
 
-  // Mobile view tab: 'tasks' | 'schedule'
-  const [mobileTab, setMobileTab] = useState<"tasks" | "schedule">("schedule");
-
-  // Modals state
-  const [editorOpen, setEditorOpen] = useState(false);
+  // Modals and selection state
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [taskToSchedule, setTaskToSchedule] = useState<PlannerTask | null>(null);
   const [scheduleHabitOpen, setScheduleHabitOpen] = useState(false);
   const [categoriesModalOpen, setCategoriesModalOpen] = useState(false);
   const [routinesModalOpen, setRoutinesModalOpen] = useState(false);
-
-  // Initial time for editor when clicking a cube
-  const [editorInitialTime, setEditorInitialTime] = useState<string>("10:00");
 
   // Daily intention / notes
   const plan = getDailyPlan(currentDateStr);
@@ -96,14 +86,10 @@ function DailyPlannerWorkspaceContent() {
 
   const handleOpenScheduleForTask = (task: PlannerTask) => {
     setTaskToSchedule(task);
-    setEditorInitialTime("10:00");
-    setEditorOpen(true);
   };
 
   const handleSelectCubeTimeSlot = (timeHHMM: string) => {
-    setTaskToSchedule(null);
-    setEditorInitialTime(timeHHMM);
-    setEditorOpen(true);
+    setSelectedTimeSlot(timeHHMM);
   };
 
   const handleSaveNotes = () => {
@@ -283,73 +269,14 @@ function DailyPlannerWorkspaceContent() {
         onOpenSchedule={handleOpenScheduleForTask}
       />
 
-      {/* Mobile Tab Switcher */}
-      <div className="flex items-center rounded-xl bg-muted p-1 border border-border lg:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileTab("tasks")}
-          className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition-all cursor-pointer ${
-            mobileTab === "tasks"
-              ? "bg-background text-primary shadow-xs"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <ListTodo size={15} />
-          <span>Task Library</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setMobileTab("schedule")}
-          className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition-all cursor-pointer ${
-            mobileTab === "schedule"
-              ? "bg-background text-primary shadow-xs"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <CalendarCheck2 size={15} />
-          <span>Timeline Schedule</span>
-        </button>
-      </div>
-
-      {/* Two-Panel Workspace Grid (Left 30% / Right 70% dominant) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
-        {/* Left Panel: Task Library (~30% / 4 columns) */}
-        <div
-          className={`lg:col-span-4 h-[720px] ${
-            mobileTab === "tasks" ? "block" : "hidden lg:block"
-          }`}
-        >
-          <MyTasksPanel
-            currentDateStr={currentDateStr}
-            onScheduleTask={handleOpenScheduleForTask}
-          />
-        </div>
-
-        {/* Right Panel: Main Time Blocking Timeline (~70% / 8 columns) */}
-        <div
-          className={`lg:col-span-8 h-[720px] ${
-            mobileTab === "schedule" ? "block" : "hidden lg:block"
-          }`}
-        >
-          <MyScheduleTimeline
-            currentDateStr={currentDateStr}
-            onDateChange={setCurrentDateStr}
-          />
-        </div>
-      </div>
-
-      {/* Contextual Time Block Editor Modal */}
-      <TimeBlockEditorModal
-        isOpen={editorOpen}
-        block={null}
-        initialDate={currentDateStr}
-        initialStartTime={editorInitialTime}
-        initialDurationMinutes={taskToSchedule?.estimatedMinutes || 60}
-        initialTaskId={taskToSchedule?.id}
-        onClose={() => {
-          setEditorOpen(false);
-          setTaskToSchedule(null);
-        }}
+      {/* Interactive Time Blocking Timeline & Smart Zoom Editor */}
+      <SmartZoomTimeline
+        currentDateStr={currentDateStr}
+        onDateChange={setCurrentDateStr}
+        selectedTimeSlot={selectedTimeSlot}
+        onClearSelectedTimeSlot={() => setSelectedTimeSlot(null)}
+        taskToSchedule={taskToSchedule}
+        onClearTaskToSchedule={() => setTaskToSchedule(null)}
       />
 
       {/* Schedule Habit / Routine Dialog */}

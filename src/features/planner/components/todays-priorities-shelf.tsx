@@ -92,7 +92,7 @@ export function TodaysPrioritiesShelf({
           <Sparkles className="size-5 text-amber-400 mb-1" />
           <p className="text-xs font-semibold text-foreground">No top priorities selected for this day</p>
           <p className="text-[11px] text-muted-foreground mt-0.5">
-            Click the target icon on any task in the Task Library to lock it into your top 3.
+            Star or prioritize tasks in My Tasks to lock them into your top 3.
           </p>
         </div>
       ) : (

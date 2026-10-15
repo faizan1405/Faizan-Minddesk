@@ -336,7 +336,7 @@ describe("Agent 2: Visual Time Blocking & Pomodoro Experience", () => {
       renderFullWorkspace();
       expect(screen.getByText("24-Hour Day Map")).toBeInTheDocument();
       expect(screen.getByText("Plan Your Day")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /\+ Add Time Block/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Add Block/i })).toBeInTheDocument();
     });
   });
 });

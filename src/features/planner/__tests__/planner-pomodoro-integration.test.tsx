@@ -403,23 +403,23 @@ describe("MINDDESK — Planner & Pomodoro Integration Verification Suite", () =>
   });
 
   describe("7. Responsive Desktop & Mobile Viewports", () => {
-    it("switches between tasks and schedule panels on mobile view", () => {
+    it("renders Day Map centerpiece and Smart Zoom Timeline directly without cluttered tabs", () => {
       renderWorkspace();
 
-      // Mobile segment toggle buttons
-      const tasksTabBtn = screen.getByRole("button", { name: "Task Library" });
-      const scheduleTabBtn = screen.getByRole("button", { name: "Timeline Schedule" });
-
-      expect(tasksTabBtn).toBeInTheDocument();
-      expect(scheduleTabBtn).toBeInTheDocument();
-
-      // Switch to tasks
-      fireEvent.click(tasksTabBtn);
-      expect(screen.getByRole("heading", { name: "Task Library" })).toBeInTheDocument();
-
-      // Switch back to schedule
-      fireEvent.click(scheduleTabBtn);
+      // Ensure 24-Hour Day Map is directly present as centerpiece
       expect(screen.getByText("24-Hour Day Map")).toBeInTheDocument();
+
+      // Ensure Smart Zoom Timeline Editor is directly accessible without tabs
+      expect(screen.getByLabelText("Smart Zoom Timeline Editor")).toBeInTheDocument();
+
+      // Ensure old tab switcher is removed
+      expect(screen.queryByRole("button", { name: "Task Library" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Timeline Schedule" })).not.toBeInTheDocument();
+
+      // Quick Create works by selecting a time slot cube from Day Map
+      const tenAmCube = screen.getByRole("button", { name: /Time slot 10:00 AM/i });
+      fireEvent.click(tenAmCube);
+      expect(screen.getByText("Quick Create Block")).toBeInTheDocument();
     });
   });
 

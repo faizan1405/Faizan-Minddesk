@@ -63,22 +63,22 @@ async function runAudit() {
     console.log("\n--> Testing 2: Creating a six-hour block colors exactly 12 cubes");
     // Clear localStorage for clean test state
     await page.evaluate(() => {
-      window.localStorage.removeItem("minddesk_calendar_data");
+      window.localStorage.removeItem("minddesk-prototype-v1");
     });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForSelector('section[aria-label="24-Hour Visual Day Map"]', { timeout: 10000 });
 
-    // Click "+ Add Time Block" button in timeline
-    await page.locator('button:has-text("+ Add Time Block")').first().click();
-    await page.waitForSelector('div[role="dialog"]', { timeout: 5000 });
+    // Click "Add Block" button in timeline
+    await page.locator('button:has-text("Add Block")').first().click();
+    await page.waitForSelector('h3:has-text("Quick Create Block")', { timeout: 5000 });
 
     // Fill Title
-    await page.fill('input[placeholder*="Build client website"]', "Architecture Deep Work");
+    await page.fill('input[placeholder*="Code Review"]', "Architecture Deep Work");
 
-    // Set Start Time = 09:00, End Time = 15:00 (6 hours = 360 mins)
-    const timeInputs = page.locator('input[type="time"]');
-    await timeInputs.first().fill("09:00");
-    await timeInputs.nth(1).fill("15:00");
+    // Set Start Time = 09:00, Duration = 360 (6 hours = 360 mins)
+    const timeInput = page.locator('input[type="time"]').first();
+    await timeInput.fill("09:00");
+    await page.selectOption('select', '360');
 
     // Submit block
     await page.locator('button:has-text("Create Block")').click();
@@ -103,36 +103,34 @@ async function runAudit() {
     // Test 3: Quick Create, editing, deleting, moving, resizing and Undo
     // -------------------------------------------------------------
     console.log("\n--> Testing 3: Quick Create, Editing, Deleting, Resizing and Undo");
-    // Click an empty cube (e.g. 16:00) to test Quick Create via Day Map
-    const cube16 = updatedDayMap.locator('button:has-text("16:00free")').first();
+    // Click an empty cube (e.g. 16:00 / 4:00 PM) to test Quick Create via Day Map
+    const cube16 = updatedDayMap.locator('button[aria-label*="Time slot 4:00 PM"]').first();
     await cube16.click();
-    await page.waitForSelector('div[role="dialog"]', { timeout: 5000 });
-    await page.fill('input[placeholder*="Build client website"]', "Sprint Planning Session");
+    await page.waitForSelector('h3:has-text("Quick Create Block")', { timeout: 5000 });
+    await page.fill('input[placeholder*="Code Review"]', "Sprint Planning Session");
     await page.locator('button:has-text("Create Block")').click();
     await page.waitForTimeout(800);
 
     // Edit the created block: Click on it in the timeline
-    const blockCard = page.locator('text="Sprint Planning Session"').first();
+    const blockCard = page.locator('span:has-text("Sprint Planning Session")').first();
     await blockCard.click();
-    await page.waitForSelector('div[role="dialog"]', { timeout: 5000 });
-    await page.fill('input[placeholder*="Build client website"]', "Sprint Planning Session (Edited)");
-    // Nudge duration to 90 mins (preset button '90m' or preset button '1.5h')
-    const preset90 = page.locator('div[role="dialog"] button:has-text("90m")');
-    if (await preset90.count() > 0) {
-      await preset90.click();
-    }
+    await page.waitForSelector('h3:has-text("Edit Time Block")', { timeout: 5000 });
+    await page.fill('input[placeholder*="Code Review"]', "Sprint Planning Session (Edited)");
+    // Nudge duration to 90 mins
+    await page.selectOption('select', '90');
     await page.locator('button:has-text("Save Changes")').click();
     await page.waitForTimeout(800);
 
     const editedBlockVisible = (await page.locator('text="Sprint Planning Session (Edited)"').count()) > 0;
 
-    // Delete the block
-    await page.locator('text="Sprint Planning Session (Edited)"').first().click();
-    await page.waitForSelector('div[role="dialog"]', { timeout: 5000 });
-    await page.locator('button[title="Delete Time Block"]').click();
+    // Delete the block using the trash button on that specific block card
+    const targetBlockCard = page.locator('div.group:has(span:has-text("Sprint Planning Session (Edited)"))').first();
+    const deleteBtn = targetBlockCard.locator('button[title*="Delete block"]').first();
+    await deleteBtn.click();
     await page.waitForTimeout(800);
 
-    const deletedFromTimeline = (await page.locator('text="Sprint Planning Session (Edited)"').count()) === 0;
+    const blockCardSelector = '.group:has-text("Sprint Planning Session (Edited)")';
+    const deletedFromTimeline = (await page.locator(blockCardSelector).count()) === 0;
 
     // Undo via Toast
     const undoToast = page.locator('button:has-text("Undo")');
@@ -140,7 +138,7 @@ async function runAudit() {
     if (await undoToast.count() > 0) {
       await undoToast.first().click();
       await page.waitForTimeout(800);
-      restoredSuccessfully = (await page.locator('text="Sprint Planning Session (Edited)"').count()) > 0;
+      restoredSuccessfully = (await page.locator(blockCardSelector).count()) > 0;
     }
 
     if (editedBlockVisible && deletedFromTimeline && (restoredSuccessfully || undoToast)) {
@@ -302,43 +300,87 @@ async function runAudit() {
     // Test 10: Focus history saves without modifying planned duration
     // -------------------------------------------------------------
     console.log("\n--> Testing 10: Planned Duration Immutability");
-    const currentDayMap = page.locator('section[aria-label="24-Hour Visual Day Map"]');
-    const summaryText = await currentDayMap.innerText();
-    const plannedIntact = summaryText.includes("6h 0m");
+    const blocksData = await page.evaluate(() => {
+      const stored = localStorage.getItem("minddesk-prototype-v1");
+      if (!stored) return null;
+      try {
+        const parsed = JSON.parse(stored);
+        return parsed.scheduledBlocks || [];
+      } catch {
+        return null;
+      }
+    });
 
-    if (plannedIntact) {
-      record(10, "Focus History & Planned Duration Immutability", "PASS", "Scheduled block planned duration remains strictly 6h 0m (360 mins); actual focused minutes tracked separately");
+    const archBlock = blocksData ? blocksData.find(b => b.title === "Architecture Deep Work") : null;
+    const plannedIntact = Boolean(archBlock && archBlock.durationMinutes === 360 && archBlock.startTime === "09:00" && archBlock.endTime === "15:00");
+
+    // Also verify Day Map has colored 12 cubes for Architecture Deep Work
+    const currentDayMap = page.locator('section[aria-label="24-Hour Visual Day Map"]');
+    const currentOccupiedCubes = currentDayMap.locator('button[aria-label*="Architecture Deep Work"]');
+    const currentOccupiedCount = await currentOccupiedCubes.count();
+
+    if (plannedIntact && currentOccupiedCount === 12) {
+      record(10, "Focus History & Planned Duration Immutability", "PASS", "Scheduled block planned duration remains strictly 360 mins (6h 0m, 09:00-15:00) with exactly 12 occupied cubes; actual focused minutes tracked separately");
     } else {
-      record(10, "Focus History & Planned Duration Immutability", "FAIL", `Planned duration altered: ${summaryText}`);
+      record(10, "Focus History & Planned Duration Immutability", "FAIL", `Planned block duration: ${JSON.stringify(archBlock)}, occupied cubes: ${currentOccupiedCount}`);
     }
 
     // -------------------------------------------------------------
-    // Test 11: Desktop and mobile layouts
+    // Test 11: Desktop and mobile layouts with smooth Quick Create
     // -------------------------------------------------------------
-    console.log("\n--> Testing 11: Responsive Desktop vs. Mobile Layouts");
+    console.log("\n--> Testing 11: Responsive Desktop vs. Mobile Minimal Layouts");
     // Switch to mobile viewport (iPhone 13: 390x844)
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(600);
 
-    const mobileTasksBtn = page.locator('button:has-text("Task Library")').first();
-    const mobileScheduleBtn = page.locator('button:has-text("Timeline Schedule")').first();
-    const hasMobileTabs = (await mobileTasksBtn.count()) > 0 && (await mobileScheduleBtn.count()) > 0;
+    // Verify 48-cube Day Map and Smart Zoom Timeline are directly rendered without tabs
+    const mobileDayMapCount = await page.locator('section[aria-label="24-Hour Visual Day Map"]').count();
+    const mobileTimelineCount = await page.locator('section[aria-label="Smart Zoom Timeline Editor"]').count();
+    const legacyTabSwitcherCount = await page.locator('button:has-text("Task Library")').count();
 
-    if (hasMobileTabs) {
-      await mobileTasksBtn.click();
-      await page.waitForTimeout(300);
-      await mobileScheduleBtn.click();
-      await page.waitForTimeout(300);
+    // Verify Quick Create works smoothly on mobile by tapping a time slot cube
+    const testCube = page.locator('button[aria-label*="Time slot 2:00 PM"]').first();
+    let mobileQuickCreateWorked = false;
+    if (await testCube.count() > 0) {
+      await testCube.click();
+      await page.waitForTimeout(400);
+      const modalHeader = page.locator('h3:has-text("Quick Create Block")').first();
+      if (await modalHeader.count() > 0) {
+        mobileQuickCreateWorked = true;
+        // Close modal via Escape key or modal close button
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(400);
+        // If modal still open, click the close button inside modal
+        const modalContainer = page.locator('div:has(> div > div > h3:has-text("Quick Create Block"))');
+        if (await modalContainer.count() > 0) {
+          const closeBtn = modalContainer.locator('button:has(svg.lucide-x)').first();
+          if (await closeBtn.count() > 0) {
+            await closeBtn.click();
+          }
+        }
+        await page.waitForTimeout(300);
+      }
     }
 
-    // Restore desktop
+    // Restore desktop viewport
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.waitForTimeout(500);
 
-    if (hasMobileTabs) {
-      record(11, "Responsive Desktop & Mobile Viewports", "PASS", "Mobile tab switcher toggles cleanly between Task Library and Timeline Schedule without horizontal overflow");
+    const desktopDayMapCount = await page.locator('section[aria-label="24-Hour Visual Day Map"]').count();
+    const desktopTimelineCount = await page.locator('section[aria-label="Smart Zoom Timeline Editor"]').count();
+
+    const mobileResponsivePass =
+      mobileDayMapCount > 0 &&
+      mobileTimelineCount > 0 &&
+      legacyTabSwitcherCount === 0 &&
+      mobileQuickCreateWorked &&
+      desktopDayMapCount > 0 &&
+      desktopTimelineCount > 0;
+
+    if (mobileResponsivePass) {
+      record(11, "Responsive Desktop & Mobile Viewports", "PASS", "Day Map centerpiece and Smart Zoom Timeline render directly without cluttered tab switcher; Quick Create opens and operates smoothly on mobile");
     } else {
-      record(11, "Responsive Desktop & Mobile Viewports", "FAIL", "Mobile tab switcher buttons not visible on mobile viewport");
+      record(11, "Responsive Desktop & Mobile Viewports", "FAIL", `Mobile audit details: dayMap=${mobileDayMapCount}, timeline=${mobileTimelineCount}, legacyTabs=${legacyTabSwitcherCount}, quickCreate=${mobileQuickCreateWorked}`);
     }
 
     // -------------------------------------------------------------
