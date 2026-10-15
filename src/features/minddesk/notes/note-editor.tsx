@@ -23,6 +23,8 @@ import {
   NoteReferenceDialog,
   TaskReferenceDialog,
 } from "./components/dialogs";
+import { SubpagesSection } from "./components/subpages-section";
+
 
 interface NoteEditorProps {
   note: NoteItem;
@@ -31,6 +33,7 @@ interface NoteEditorProps {
   onNavigateToNote: (noteId: string) => void;
   onDuplicateNote: () => void;
   onDeleteNote: () => void;
+  onCreateSubpage?: (title?: string) => void;
   onToggleMobileSidebar?: () => void;
 }
 
@@ -41,12 +44,19 @@ export function NoteEditor({
   onNavigateToNote,
   onDuplicateNote,
   onDeleteNote,
+  onCreateSubpage,
   onToggleMobileSidebar,
 }: NoteEditorProps) {
-  const { data, update, persistImmediately } = useDeskData();
+  const { data, update, registerDeletedId, persistImmediately } = useDeskData();
   const serverSaveStatus = useUIStore((s) => s.saveStatus);
   const [isLocalDirty, setIsLocalDirty] = useState(false);
   const effectiveSaveStatus: SaveStatus = isLocalDirty ? "saving" : serverSaveStatus;
+
+  // Direct subpages of current document
+  const directSubpages = useMemo(
+    () => data.notes.filter((item) => item.parentId === note.id),
+    [data.notes, note.id],
+  );
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
@@ -57,6 +67,10 @@ export function NoteEditor({
   const [slashIndex, setSlashIndex] = useState(0);
   const [slashClientRect, setSlashClientRect] = useState<(() => DOMRect) | null>(null);
   const slashPropsRef = useRef<SuggestionProps<SlashCommandItem> | null>(null);
+
+  const slashActiveRef = useRef(false);
+  const slashIndexRef = useRef(0);
+  const slashItemsRef = useRef<SlashCommandItem[]>(ALL_SLASH_COMMANDS);
 
   // Dialog states
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
@@ -135,37 +149,50 @@ export function NoteEditor({
     () => ({
       onStart: (props: SuggestionProps<SlashCommandItem>) => {
         slashPropsRef.current = props;
+        slashItemsRef.current = props.items;
         setSlashItems(props.items);
         setSlashClientRect(() => props.clientRect as () => DOMRect);
+        slashIndexRef.current = 0;
         setSlashIndex(0);
+        slashActiveRef.current = true;
         setSlashActive(true);
       },
       onUpdate: (props: SuggestionProps<SlashCommandItem>) => {
         slashPropsRef.current = props;
+        slashItemsRef.current = props.items;
         setSlashItems(props.items);
         setSlashClientRect(() => props.clientRect as () => DOMRect);
+        slashIndexRef.current = 0;
         setSlashIndex(0);
       },
       onKeyDown: ({ event }: SuggestionKeyDownProps) => {
-        if (!slashActive) return false;
+        if (!slashActiveRef.current) return false;
 
         if (event.key === "ArrowDown") {
           event.preventDefault();
-          setSlashIndex((prev) => (prev + 1) % Math.max(1, slashItems.length));
+          const items = slashItemsRef.current;
+          const next = (slashIndexRef.current + 1) % Math.max(1, items.length);
+          slashIndexRef.current = next;
+          setSlashIndex(next);
           return true;
         }
 
         if (event.key === "ArrowUp") {
           event.preventDefault();
-          setSlashIndex((prev) => (prev - 1 + slashItems.length) % Math.max(1, slashItems.length));
+          const items = slashItemsRef.current;
+          const prev = (slashIndexRef.current - 1 + items.length) % Math.max(1, items.length);
+          slashIndexRef.current = prev;
+          setSlashIndex(prev);
           return true;
         }
 
         if (event.key === "Enter" || event.key === "Tab") {
-          if (slashItems.length > 0) {
+          const items = slashItemsRef.current;
+          if (items.length > 0) {
             event.preventDefault();
-            const chosen = slashItems[slashIndex] || slashItems[0];
+            const chosen = items[slashIndexRef.current] || items[0];
             slashPropsRef.current?.command(chosen);
+            slashActiveRef.current = false;
             setSlashActive(false);
             return true;
           }
@@ -173,6 +200,7 @@ export function NoteEditor({
 
         if (event.key === "Escape") {
           event.preventDefault();
+          slashActiveRef.current = false;
           setSlashActive(false);
           return true;
         }
@@ -180,11 +208,12 @@ export function NoteEditor({
         return false;
       },
       onExit: () => {
+        slashActiveRef.current = false;
         setSlashActive(false);
         slashPropsRef.current = null;
       },
     }),
-    [slashActive, slashIndex, slashItems],
+    [],
   );
 
   // Parse initial content safely (JSON or HTML or Plain Text)
@@ -336,6 +365,30 @@ export function NoteEditor({
         saveStatus={effectiveSaveStatus}
       />
 
+      {/* Subpages Section (shows nested subpages when parent opens) */}
+      <SubpagesSection
+        parentNote={note}
+        subpages={directSubpages}
+        allNotes={data.notes}
+        onNavigateToNote={onNavigateToNote}
+        onCreateSubpage={(title) => {
+          if (onCreateSubpage) {
+            onCreateSubpage(title);
+          } else {
+            const newId = createNestedNote(title || "Untitled sub-page");
+            onNavigateToNote(newId);
+          }
+        }}
+        onDeleteSubpage={(subpageId) => {
+          registerDeletedId("note", subpageId);
+          update((current) => ({
+            ...current,
+            notes: current.notes.filter((n) => n.id !== subpageId),
+          }));
+          void persistImmediately();
+        }}
+      />
+
       {/* Collapsible Table of Contents */}
       <TableOfContents editor={editor} />
 
@@ -360,10 +413,14 @@ export function NoteEditor({
             selectedIndex={slashIndex}
             onSelect={(item) => {
               slashPropsRef.current?.command(item);
+              slashActiveRef.current = false;
               setSlashActive(false);
             }}
             clientRect={slashClientRect}
-            onClose={() => setSlashActive(false)}
+            onClose={() => {
+              slashActiveRef.current = false;
+              setSlashActive(false);
+            }}
           />
         )}
       </div>

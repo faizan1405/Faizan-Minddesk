@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   FileText,
   FolderOpen,
+  Layers,
   LayoutGrid,
   List,
   Plus,
@@ -60,15 +61,27 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
     return candidate && data.notes.some((item) => item.id === candidate) ? candidate : null;
   });
 
+  const lastInitialNoteIdRef = useRef<string | undefined>(
+    openNoteId ? initialNoteId : undefined,
+  );
+
   useEffect(() => {
-    const candidate = initialNoteId ?? selectedItem;
-    if (candidate && data.notes.some((item) => item.id === candidate)) {
-      setOpenNoteId(candidate);
-      if (selectedItem === candidate) {
-        setSelectedItem(null);
+    if (initialNoteId && initialNoteId !== lastInitialNoteIdRef.current) {
+      if (data.notes.some((item) => item.id === initialNoteId)) {
+        setOpenNoteId(initialNoteId);
+        lastInitialNoteIdRef.current = initialNoteId;
       }
     }
-  }, [data.notes, initialNoteId, selectedItem, setSelectedItem]);
+  }, [initialNoteId, data.notes]);
+
+  useEffect(() => {
+    if (selectedItem) {
+      if (data.notes.some((item) => item.id === selectedItem)) {
+        setOpenNoteId(selectedItem);
+      }
+      setSelectedItem(null);
+    }
+  }, [selectedItem, data.notes, setSelectedItem]);
 
   // Selected project object if a specific project is filtered
   const activeFilteredProject = useMemo(() => {
@@ -79,7 +92,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
   }, [data.projects, projectFilter]);
 
   // Create note
-  const createNote = (parentId?: string, targetProjectId?: string) => {
+  const createNote = (parentId?: string, targetProjectId?: string, initialTitle?: string) => {
     const id = crypto.randomUUID();
     let assignedProjectId: string | undefined = undefined;
 
@@ -96,13 +109,14 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
       }
     }
 
+    const title = initialTitle || (parentId ? "Untitled sub-page" : "Untitled note");
     const newNote: NoteItem = {
       id,
-      title: "Untitled note",
-      excerpt: "A new place to put a thought.",
+      title,
+      excerpt: parentId ? "Nested page." : "A new place to put a thought.",
       content:
-        '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Start writing…"}]}]}',
-      icon: "✎",
+        `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"${title}"}]}]}`,
+      icon: parentId ? "📄" : "✎",
       updated: "Just now",
       starred: false,
       ...(assignedProjectId ? { projectId: assignedProjectId } : {}),
@@ -112,6 +126,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
     update((current) => ({ ...current, notes: [newNote, ...current.notes] }));
     setOpenNoteId(id);
     void persistImmediately();
+    return id;
   };
 
   // Duplicate note
@@ -384,6 +399,10 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
       result = result.filter((note) => note.starred);
     }
 
+    // Requirement: Show only top-level pages on Notes Home.
+    // Subpages are accessed and managed when their parent document opens.
+    result = result.filter((note) => !note.parentId);
+
     if (q) {
       result = result.filter((note) =>
         `${note.title} ${note.excerpt} ${note.content}`.toLowerCase().includes(q),
@@ -513,6 +532,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
             }}
             onDuplicateNote={() => duplicateNote(activeNote)}
             onDeleteNote={() => setEditorDeleteTarget(activeNote)}
+            onCreateSubpage={(title) => createNote(activeNote.id, undefined, title)}
             onToggleMobileSidebar={() => setShowMobileSidebar(true)}
           />
         </div>
@@ -655,9 +675,7 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
                   const project = note.projectId
                     ? data.projects.find((item) => item.id === note.projectId) || null
                     : null;
-                  const parentNote = note.parentId
-                    ? data.notes.find((item) => item.id === note.parentId) || null
-                    : null;
+                  const directSubpages = data.notes.filter((item) => item.parentId === note.id);
 
                   return (
                     <article
@@ -669,10 +687,10 @@ export function NotesView({ favoriteOnly = false, initialNoteId }: NotesViewProp
                           <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-lg shadow-2xs">
                             {note.icon || "📄"}
                           </span>
-                          {parentNote && (
-                            <span className="flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[10px] text-muted-foreground truncate max-w-[160px]">
-                              <span>{parentNote.icon || "📄"}</span>
-                              <span className="truncate">{parentNote.title || "Untitled"}</span>
+                          {directSubpages.length > 0 && (
+                            <span className="flex items-center gap-1 rounded-md bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 text-[10px] font-medium truncate">
+                              <Layers className="size-3 shrink-0" />
+                              <span>{directSubpages.length} {directSubpages.length === 1 ? "subpage" : "subpages"}</span>
                             </span>
                           )}
                         </div>
