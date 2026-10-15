@@ -132,12 +132,16 @@ describe("T2.1 — Auth Zod Schemas, Password Strength, Env Validators & Redirec
 
     // Block external URLs, protocol-relative URLs, backslash tricks, and auth loops
     expect(sanitizeRedirectPath("https://malicious.example.com")).toBe(
-      "/dashboard"
+      "/tasks"
     );
-    expect(sanitizeRedirectPath("//malicious.example.com")).toBe("/dashboard");
-    expect(sanitizeRedirectPath("/\\malicious.example.com")).toBe("/dashboard");
-    expect(sanitizeRedirectPath("/login")).toBe("/dashboard");
-    expect(sanitizeRedirectPath("/signup")).toBe("/dashboard");
-    expect(sanitizeRedirectPath(null)).toBe("/dashboard");
+    expect(sanitizeRedirectPath("//malicious.example.com")).toBe("/tasks");
+    expect(sanitizeRedirectPath("/\\malicious.example.com")).toBe("/tasks");
+    expect(sanitizeRedirectPath("/login")).toBe("/tasks");
+    expect(sanitizeRedirectPath("/signup")).toBe("/tasks");
+    expect(sanitizeRedirectPath(null)).toBe("/tasks");
+
+    // Legacy /dashboard paths resolve to /tasks
+    expect(sanitizeRedirectPath("/dashboard")).toBe("/tasks");
+    expect(sanitizeRedirectPath("/dashboard/overview")).toBe("/tasks");
   });
 });

@@ -30,7 +30,7 @@ interface SignupFormProps {
 }
 
 export function SignupForm({
-  nextPath = "/dashboard",
+  nextPath = "/tasks",
   authConfigured = true,
   actionOverride,
 }: SignupFormProps) {

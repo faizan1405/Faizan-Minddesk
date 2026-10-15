@@ -17,7 +17,7 @@ export function AuthShell({
   return (
     <main className="grid min-h-screen place-items-center bg-background px-5 py-12 text-foreground">
       <section className="w-full max-w-md">
-        <Link href="/dashboard" className="mb-8 flex items-center gap-3">
+        <Link href="/tasks" className="mb-8 flex items-center gap-3">
           <span className="grid size-10 place-items-center rounded-xl bg-brand-soft font-semibold text-brand-ink">
             M
           </span>

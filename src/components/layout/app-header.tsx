@@ -16,7 +16,7 @@ import { PlanYourDayButton } from "@/features/planner/components/plan-your-day-b
 import { NotificationBell } from "@/features/notifications/components/notification-bell";
 
 export function AppHeader() {
-  const pathname = usePathname() || "/dashboard";
+  const pathname = usePathname() || "/tasks";
   const { data, update } = useDeskData();
   const toggleSidebar = useUIStore((state) => state.toggleSidebar);
   const setMobileNavOpen = useUIStore((state) => state.setMobileNavOpen);

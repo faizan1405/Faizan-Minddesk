@@ -146,7 +146,7 @@ export async function loginAction(
       maxAge: 30 * 24 * 60 * 60,
     });
 
-    const target = sanitizeRedirectPath(parsed.data.next, "/dashboard");
+    const target = sanitizeRedirectPath(parsed.data.next, "/tasks");
     redirect(target);
   }
 
@@ -191,7 +191,7 @@ export async function loginAction(
     };
   }
 
-  const target = sanitizeRedirectPath(parsed.data.next, "/dashboard");
+  const target = sanitizeRedirectPath(parsed.data.next, "/tasks");
   redirect(target);
 }
 
@@ -233,7 +233,7 @@ export async function signupAction(
   }
 
   const origin = await resolveAppOrigin();
-  const safeNext = sanitizeRedirectPath(parsed.data.next, "/dashboard");
+  const safeNext = sanitizeRedirectPath(parsed.data.next, "/tasks");
 
   let signedInImmediately = false;
 
@@ -420,7 +420,7 @@ export async function updatePasswordAction(
     };
   }
 
-  redirect("/dashboard");
+  redirect("/tasks");
 }
 
 export async function signOutAction(): Promise<void> {

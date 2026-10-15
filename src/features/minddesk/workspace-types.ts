@@ -1,5 +1,4 @@
 export type WorkspaceView =
-  | "home"
   | "tasks"
   | "calendar"
   | "plan-your-day"
@@ -13,7 +12,6 @@ export type WorkspaceView =
   | "settings";
 
 export const workspaceTitles: Record<WorkspaceView, string> = {
-  home: "Your desk",
   tasks: "My tasks",
   calendar: "Calendar",
   "plan-your-day": "Plan your day",
@@ -28,7 +26,6 @@ export const workspaceTitles: Record<WorkspaceView, string> = {
 };
 
 export const workspaceRoutes: Record<WorkspaceView, string> = {
-  home: "/dashboard",
   tasks: "/tasks",
   calendar: "/calendar",
   "plan-your-day": "/plan-your-day",
@@ -43,7 +40,7 @@ export const workspaceRoutes: Record<WorkspaceView, string> = {
 };
 
 export function pathnameToWorkspaceView(pathname: string | null | undefined): WorkspaceView {
-  if (!pathname || pathname === "/" || pathname.startsWith("/dashboard")) return "home";
+  if (!pathname || pathname === "/" || pathname.startsWith("/dashboard")) return "tasks";
   if (pathname.startsWith("/tasks")) return "tasks";
   if (pathname.startsWith("/calendar")) return "calendar";
   if (pathname.startsWith("/plan-your-day")) return "plan-your-day";
@@ -55,5 +52,5 @@ export function pathnameToWorkspaceView(pathname: string | null | undefined): Wo
   if (pathname.startsWith("/favorites")) return "favorites";
   if (pathname.startsWith("/recent")) return "recent";
   if (pathname.startsWith("/settings")) return "settings";
-  return "home";
+  return "tasks";
 }

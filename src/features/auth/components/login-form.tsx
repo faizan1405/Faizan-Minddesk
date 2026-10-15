@@ -31,7 +31,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export function LoginForm({
-  nextPath = "/dashboard",
+  nextPath = "/tasks",
   initialError,
   authConfigured = true,
   isAdminMode = false,

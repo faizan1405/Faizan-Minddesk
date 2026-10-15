@@ -10,6 +10,15 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  async redirects() {
+    return [
+      {
+        source: "/dashboard",
+        destination: "/tasks",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

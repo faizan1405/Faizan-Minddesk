@@ -25,7 +25,6 @@ describe("T2.2 — Route Protection & Better Auth Session Middleware", () => {
   });
 
   it("accurately classifies protected workspace routes and guest-only auth routes", () => {
-    expect(isProtectedWorkspacePath("/dashboard")).toBe(true);
     expect(isProtectedWorkspacePath("/tasks")).toBe(true);
     expect(isProtectedWorkspacePath("/notes/123")).toBe(true);
     expect(isProtectedWorkspacePath("/mind-maps/abc")).toBe(true);
@@ -87,7 +86,7 @@ describe("T2.2 — Route Protection & Better Auth Session Middleware", () => {
     expect(cookieRes.status).toBe(200);
   });
 
-  it("redirects authenticated users away from /login and /signup to safe next or /dashboard", async () => {
+  it("redirects authenticated users away from /login and /signup to safe next or /tasks", async () => {
     const sessionCookieHeader = `${BETTER_AUTH_SESSION_COOKIES[0]}=session-token-123`;
 
     const loginReq = new NextRequest(
@@ -102,7 +101,7 @@ describe("T2.2 — Route Protection & Better Auth Session Middleware", () => {
       "http://localhost:3000/mind-maps"
     );
 
-    // Malicious open-redirect in ?next= is neutralized to /dashboard
+    // Malicious open-redirect in ?next= is neutralized to /tasks
     const unsafeReq = new NextRequest(
       new URL("http://localhost:3000/login?next=https://evil.example.com"),
       {
@@ -112,12 +111,19 @@ describe("T2.2 — Route Protection & Better Auth Session Middleware", () => {
     const unsafeRes = await updateSessionAndGuardRoutes(unsafeReq);
     expect(unsafeRes.status).toBe(307);
     expect(unsafeRes.headers.get("location")).toBe(
-      "http://localhost:3000/dashboard"
+      "http://localhost:3000/tasks"
     );
   });
 
+  it("redirects legacy /dashboard requests to /tasks", async () => {
+    const req = new NextRequest(new URL("http://localhost:3000/dashboard"));
+    const res = await updateSessionAndGuardRoutes(req);
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("http://localhost:3000/tasks");
+  });
+
   it("allows authenticated users to access protected workspace routes", async () => {
-    const req = new NextRequest(new URL("http://localhost:3000/dashboard"), {
+    const req = new NextRequest(new URL("http://localhost:3000/tasks"), {
       headers: {
         cookie: `${BETTER_AUTH_SESSION_COOKIES[0]}=session-token-123`,
       },

@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const token = searchParams.get("token")?.trim();
   const type = searchParams.get("type")?.trim();
   const errorParam = searchParams.get("error")?.trim();
-  const next = sanitizeRedirectPath(searchParams.get("next"), "/dashboard");
+  const next = sanitizeRedirectPath(searchParams.get("next"), "/tasks");
 
   if (!isAuthConfigured()) {
     return NextResponse.redirect(

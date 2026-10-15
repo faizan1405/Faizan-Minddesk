@@ -2,12 +2,12 @@ import * as React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MindDeskProvider } from "@/features/minddesk/store";
-import { DashboardView, FavoritesView, RecentView, SettingsView, MindDeskWorkspace } from "@/features/minddesk/workspace";
+import { FavoritesView, RecentView, SettingsView, MindDeskWorkspace } from "@/features/minddesk/workspace";
 import { TasksView } from "@/features/minddesk/tasks-view";
 import { NotesView, ProjectsView } from "@/features/minddesk/library-views";
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/dashboard",
+  usePathname: () => "/tasks",
   useRouter: () => ({
     push: vi.fn(),
   }),
@@ -17,21 +17,6 @@ vi.mock("next/navigation", () => ({
 describe("Lovable Frontend Components & Interactions", () => {
   beforeEach(() => {
     window.localStorage.clear();
-  });
-
-  it("renders DashboardView with greeting, today's focus tasks, overview stats, and recent notes", () => {
-    render(
-      <MindDeskProvider>
-        <DashboardView />
-      </MindDeskProvider>
-    );
-
-    expect(screen.getByText(/Faizan\./i)).toBeInTheDocument();
-    expect(screen.getByText(/Today’s focus/i)).toBeInTheDocument();
-    expect(screen.getByText("Tasks completed")).toBeInTheDocument();
-    expect(screen.getByText("Open projects")).toBeInTheDocument();
-    expect(screen.getByText("Recently opened")).toBeInTheDocument();
-    expect(screen.getByText("A small next step")).toBeInTheDocument();
   });
 
   it("renders TasksView, allows filter switching, task toggling, and new task entry", () => {
@@ -132,7 +117,7 @@ describe("Lovable Frontend Components & Interactions", () => {
   });
 
   it("renders MindDeskWorkspace standalone without errors", () => {
-    render(<MindDeskWorkspace initialView="home" />);
+    render(<MindDeskWorkspace initialView="tasks" />);
     expect(screen.getByText("Mind Desk")).toBeInTheDocument();
     expect(screen.getByText("Quick capture")).toBeInTheDocument();
   });

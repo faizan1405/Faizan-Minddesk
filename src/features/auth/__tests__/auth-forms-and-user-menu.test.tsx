@@ -8,7 +8,7 @@ import { UpdatePasswordForm } from "@/features/auth/components/update-password-f
 import { AppShell } from "@/components/layout/app-shell";
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/dashboard",
+  usePathname: () => "/tasks",
   useRouter: () => ({
     push: vi.fn(),
   }),
@@ -76,7 +76,7 @@ describe("T2.3 — Auth Forms, Accessibility Attributes & Sidebar UserMenu", () 
           fullName: "Faizan Architect",
         }}
       >
-        <div>Dashboard View</div>
+        <div>Tasks View</div>
       </AppShell>
     );
 
