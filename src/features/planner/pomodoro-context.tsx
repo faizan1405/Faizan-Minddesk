@@ -238,6 +238,10 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
   );
 }
 
+export function useOptionalPomodoro(): PomodoroContextType | null {
+  return useContext(PomodoroContext);
+}
+
 export function usePomodoro(): PomodoroContextType {
   const ctx = useContext(PomodoroContext);
   if (!ctx) {

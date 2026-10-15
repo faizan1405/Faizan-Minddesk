@@ -31,12 +31,12 @@ function renderPlannerWorkspace() {
   );
 }
 
-describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience", () => {
+describe("MindDesk Phase 6: Directly Interactive 24-Hour Day Map Experience", () => {
   beforeEach(() => {
     window.localStorage.clear();
   });
 
-  it("renders the minimal visual planner layout with 24-Hour Day Map centerpiece and Smart Zoom Timeline", async () => {
+  it("renders the simplified visual planner layout with 24-Hour Day Map centerpiece and confirms large timeline is removed", async () => {
     renderPlannerWorkspace();
 
     // Verify workspace header
@@ -50,15 +50,17 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
     // Today's Top 3 Priorities shelf removed from Planner
     expect(screen.queryByText(/Today's Top 3 Priorities/i)).not.toBeInTheDocument();
 
-    // Smart Zoom Timeline Editor directly accessible (no tab switcher)
-    expect(screen.getByLabelText("Smart Zoom Timeline Editor")).toBeInTheDocument();
+    // Large timeline/Smart Zoom Editor completely removed
+    expect(screen.queryByLabelText("Smart Zoom Timeline Editor")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Task Library" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Timeline Schedule" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "24 Hours" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Compact" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Relaxed" })).not.toBeInTheDocument();
 
-    // Timeline controls & quick actions
+    // Convenient + Add Block and Select Range buttons are present
     expect(screen.getByRole("button", { name: /Add Block/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "24 Hours" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Normal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Select Range/i })).toBeInTheDocument();
   });
 
   it("creates a standalone time block directly via + Add Block button", async () => {
@@ -67,56 +69,49 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
     const addBlockBtn = screen.getByRole("button", { name: /Add Block/i });
     fireEvent.click(addBlockBtn);
 
-    // Quick Create Modal opens
+    // Minimal Add Block Dialog opens
     await waitFor(() => {
-      expect(screen.getByText("Quick Create Block")).toBeInTheDocument();
+      expect(screen.getByText("Add Time Block")).toBeInTheDocument();
     });
 
     // Fill title
-    const titleInput = screen.getByPlaceholderText(/e.g. Code Review, Client Proposal, Gym.../i);
+    const titleInput = screen.getByPlaceholderText(/e.g. Website Development, Deep Coding.../i);
     fireEvent.change(titleInput, { target: { value: "Team Architecture Review" } });
 
     // Submit form
-    const createBtn = screen.getByRole("button", { name: /Create Block/i });
-    fireEvent.click(createBtn);
+    const saveBtn = screen.getByRole("button", { name: /Save Block/i });
+    fireEvent.click(saveBtn);
 
-    // Verify it renders on the timeline
+    // Modal closes and block is scheduled in the calendar context
     await waitFor(() => {
-      expect(screen.getByText("Team Architecture Review")).toBeInTheDocument();
+      expect(screen.queryByText("Add Time Block")).not.toBeInTheDocument();
     });
   });
 
-  it("navigates Smart Zoom timeline when clicking a time slot cube in 24-Hour Day Map, and opens Quick Create when clicking an empty slot in Smart Zoom", async () => {
+  it("opens Add Block popup directly when clicking an empty time slot cube", async () => {
     renderPlannerWorkspace();
 
     const tenAmCube = screen.getByRole("button", { name: /Time slot 10:00 AM/i });
     fireEvent.click(tenAmCube);
 
-    // Cube click navigates without opening modal
-    expect(screen.queryByText("Quick Create Block")).not.toBeInTheDocument();
-
-    // Clicking an empty slot inside Smart Zoom opens Quick Create modal
-    const emptySlot = screen.getByRole("button", { name: /Schedule at 10:00 AM/i });
-    fireEvent.click(emptySlot);
-
+    // Directly opens Add Time Block dialog prefilled with slot time
     await waitFor(() => {
-      expect(screen.getByText("Quick Create Block")).toBeInTheDocument();
+      expect(screen.getByText("Add Time Block")).toBeInTheDocument();
+      expect(screen.getByText(/10:00 AM – 10:30 AM/i)).toBeInTheDocument();
     });
 
-    const titleInput = screen.getByPlaceholderText(/e.g. Code Review, Client Proposal, Gym.../i);
+    const titleInput = screen.getByPlaceholderText(/e.g. Website Development, Deep Coding.../i);
     fireEvent.change(titleInput, { target: { value: "Sprint Retro" } });
 
-    const createBtn = screen.getByRole("button", { name: /Create Block/i });
-    fireEvent.click(createBtn);
+    const saveBtn = screen.getByRole("button", { name: /Save Block/i });
+    fireEvent.click(saveBtn);
 
     await waitFor(() => {
-      expect(screen.getByText("Sprint Retro")).toBeInTheDocument();
+      expect(screen.queryByText("Add Time Block")).not.toBeInTheDocument();
     });
   });
 
   it("calculates merged non-double-counted time analytics accurately", () => {
-    // 2 overlapping intervals: 10:00 - 11:00 (600-660) and 10:30 - 11:30 (630-690)
-    // Non-overlapping interval: 13:00 - 14:00 (780-840)
     const items = [
       { startMinutes: 600, endMinutes: 660 },
       { startMinutes: 630, endMinutes: 690 },
@@ -125,11 +120,10 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
 
     const mergedOccupied = calculateMergedOccupiedMinutes(items);
     // [600, 690] = 90 mins, [780, 840] = 60 mins -> Total = 150 mins (2h 30m)
-    // If double counted, it would have been 60 + 60 + 60 = 180 mins.
     expect(mergedOccupied).toBe(150);
   });
 
-  it("detects scheduling conflicts and triggers ConflictDialog with 3 options", () => {
+  it("detects scheduling conflicts and triggers collision detection", () => {
     const existing = [
       { id: "evt-1", title: "Client Strategy Sync", startMinutes: 600, endMinutes: 660 },
     ];
@@ -148,39 +142,6 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
       existing
     );
     expect(noConflictResult.hasConflict).toBe(false);
-  });
-
-  it("switches timeline zoom presets (Compact, Normal, Relaxed)", async () => {
-    renderPlannerWorkspace();
-
-    const compactBtn = screen.getByRole("button", { name: "Compact" });
-    const normalBtn = screen.getByRole("button", { name: "Normal" });
-    const relaxedBtn = screen.getByRole("button", { name: "Relaxed" });
-
-    expect(compactBtn).toBeInTheDocument();
-    expect(normalBtn).toBeInTheDocument();
-    expect(relaxedBtn).toBeInTheDocument();
-
-    fireEvent.click(compactBtn);
-    expect(compactBtn).toHaveClass("bg-background");
-
-    fireEvent.click(relaxedBtn);
-    expect(relaxedBtn).toHaveClass("bg-background");
-  });
-
-  it("switches time window filters (All 24h, Morning, Afternoon, Evening, Night)", async () => {
-    renderPlannerWorkspace();
-
-    const morningBtn = screen.getByRole("button", { name: /Morning/i });
-    const afternoonBtn = screen.getByRole("button", { name: /Afternoon/i });
-    const eveningBtn = screen.getByRole("button", { name: /Evening/i });
-
-    expect(morningBtn).toBeInTheDocument();
-    expect(afternoonBtn).toBeInTheDocument();
-    expect(eveningBtn).toBeInTheDocument();
-
-    fireEvent.click(morningBtn);
-    expect(morningBtn).toHaveClass("text-primary");
   });
 
   it("maintains task data integrity: MyTasksPanel preserves underlying tasks independently", async () => {
@@ -211,15 +172,15 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
     const addBlockBtn = screen.getByRole("button", { name: /Add Block/i });
     fireEvent.click(addBlockBtn);
     await waitFor(() => {
-      expect(screen.getByText("Quick Create Block")).toBeInTheDocument();
+      expect(screen.getByText("Add Time Block")).toBeInTheDocument();
     });
-    const titleInput = screen.getByPlaceholderText(/e.g. Code Review, Client Proposal, Gym.../i);
+    const titleInput = screen.getByPlaceholderText(/e.g. Website Development, Deep Coding.../i);
     fireEvent.change(titleInput, { target: { value: "Cross-App Sync Block" } });
-    const createBtn = screen.getByRole("button", { name: /Create Block/i });
-    fireEvent.click(createBtn);
+    const saveBtn = screen.getByRole("button", { name: /Save Block/i });
+    fireEvent.click(saveBtn);
 
     await waitFor(() => {
-      expect(screen.getByText("Cross-App Sync Block")).toBeInTheDocument();
+      expect(screen.queryByText("Add Time Block")).not.toBeInTheDocument();
     });
 
     // 2. Switch view to CalendarWorkspace

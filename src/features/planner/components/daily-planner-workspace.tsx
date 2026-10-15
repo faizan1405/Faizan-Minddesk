@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { ScheduleHabitDialog } from "@/features/habits/components/schedule-habit-dialog";
 import { DailyProgressCard } from "./daily-progress-card";
-import { SmartZoomTimeline } from "./smart-zoom-timeline";
 import { VisualDayMap } from "./visual-day-map";
 import { PlannerCategoriesModal } from "./planner-categories-modal";
 import { PlannerRoutinesModal } from "./planner-routines-modal";
@@ -43,8 +42,7 @@ function DailyPlannerWorkspaceContent() {
     format(new Date(), "yyyy-MM-dd")
   );
 
-  // Selection and navigation state
-  const [navigateToTimeSlot, setNavigateToTimeSlot] = useState<string | null>(null);
+  // Selection state
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [scheduleHabitOpen, setScheduleHabitOpen] = useState(false);
   const [categoriesModalOpen, setCategoriesModalOpen] = useState(false);
@@ -76,15 +74,13 @@ function DailyPlannerWorkspaceContent() {
     return (
       <div className="space-y-4">
         <div className="h-20 w-full rounded-2xl bg-muted/60 skeleton-shimmer" />
-        <div className="h-44 w-full rounded-2xl bg-muted/60 skeleton-shimmer" />
+        <div className="h-72 w-full rounded-2xl bg-muted/60 skeleton-shimmer" />
         <div className="h-28 w-full rounded-2xl bg-muted/60 skeleton-shimmer" />
-        <div className="h-[650px] w-full rounded-2xl bg-muted/60 skeleton-shimmer" />
       </div>
     );
   }
 
-  const handleSelectCubeTimeSlot = (timeHHMM: string, block?: ScheduledTaskBlock) => {
-    setNavigateToTimeSlot(timeHHMM);
+  const handleSelectCubeTimeSlot = (_timeHHMM: string, block?: ScheduledTaskBlock) => {
     if (block) {
       setSelectedBlockId(block.id);
     } else {
@@ -142,7 +138,7 @@ function DailyPlannerWorkspaceContent() {
             Plan Your Day
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            Pick a task → Allocate dedicated time → Work according to your schedule → Mark progress.
+            Visual 24-hour time blocking: click or drag cubes to schedule your day with intention.
           </p>
         </div>
 
@@ -261,18 +257,8 @@ function DailyPlannerWorkspaceContent() {
         onManageCategories={() => setCategoriesModalOpen(true)}
       />
 
-      {/* Daily Progress & Analytics Header */}
+      {/* Daily Progress & Analytics Card */}
       <DailyProgressCard currentDateStr={currentDateStr} />
-
-      {/* Interactive Time Blocking Timeline & Smart Zoom Editor */}
-      <SmartZoomTimeline
-        currentDateStr={currentDateStr}
-        onDateChange={setCurrentDateStr}
-        navigateToTimeSlot={navigateToTimeSlot}
-        onClearNavigateToTimeSlot={() => setNavigateToTimeSlot(null)}
-        selectedBlockId={selectedBlockId}
-        onSelectBlock={(blockId) => setSelectedBlockId(blockId)}
-      />
 
       {/* Schedule Habit / Routine Dialog */}
       <ScheduleHabitDialog

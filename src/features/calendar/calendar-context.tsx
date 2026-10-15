@@ -1105,29 +1105,54 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
 
   const updatePlannerCategory = useCallback(
     (id: string, updates: Partial<PlannerCategory>) => {
-      updateAndPersist((prev) => ({
-        ...prev,
-        plannerCategories: (prev.plannerCategories || DEFAULT_PLANNER_CATEGORIES).map((c) =>
+      updateAndPersist((prev) => {
+        const categories = (prev.plannerCategories || DEFAULT_PLANNER_CATEGORIES).map((c) =>
           c.id === id ? { ...c, ...updates } : c
-        ),
-      }));
+        );
+        const updatedScheduledBlocks = updates.color
+          ? (prev.scheduledBlocks || []).map((b) =>
+              b.categoryId === id ? { ...b, color: updates.color } : b
+            )
+          : prev.scheduledBlocks;
+        const updatedPlannerRoutines = updates.color
+          ? (prev.plannerRoutines || []).map((r) =>
+              r.categoryId === id ? { ...r, color: updates.color } : r
+            )
+          : prev.plannerRoutines;
+
+        return {
+          ...prev,
+          plannerCategories: categories,
+          scheduledBlocks: updatedScheduledBlocks,
+          plannerRoutines: updatedPlannerRoutines,
+        };
+      });
     },
     [updateAndPersist]
   );
 
   const deletePlannerCategory = useCallback(
     (id: string, reassignCategoryId?: string) => {
-      const fallbackId = reassignCategoryId || "cat-work-focus";
-      updateAndPersist((prev) => ({
-        ...prev,
-        plannerCategories: (prev.plannerCategories || DEFAULT_PLANNER_CATEGORIES).filter((c) => c.id !== id),
-        scheduledBlocks: (prev.scheduledBlocks || []).map((b) =>
-          b.categoryId === id ? { ...b, categoryId: fallbackId } : b
-        ),
-        plannerRoutines: (prev.plannerRoutines || []).map((r) =>
-          r.categoryId === id ? { ...r, categoryId: fallbackId } : r
-        ),
-      }));
+      updateAndPersist((prev) => {
+        const currentCats = prev.plannerCategories || DEFAULT_PLANNER_CATEGORIES;
+        const fallbackId =
+          reassignCategoryId ||
+          currentCats.find((c) => c.id !== id)?.id ||
+          "cat-work-focus";
+        const targetCategory = currentCats.find((c) => c.id === fallbackId);
+        const targetColor = targetCategory?.color || "#4f46e5";
+
+        return {
+          ...prev,
+          plannerCategories: currentCats.filter((c) => c.id !== id),
+          scheduledBlocks: (prev.scheduledBlocks || []).map((b) =>
+            b.categoryId === id ? { ...b, categoryId: fallbackId, color: targetColor } : b
+          ),
+          plannerRoutines: (prev.plannerRoutines || []).map((r) =>
+            r.categoryId === id ? { ...r, categoryId: fallbackId, color: targetColor } : r
+          ),
+        };
+      });
     },
     [updateAndPersist]
   );

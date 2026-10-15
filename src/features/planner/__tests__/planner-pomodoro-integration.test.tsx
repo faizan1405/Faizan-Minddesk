@@ -403,28 +403,23 @@ describe("MINDDESK — Planner & Pomodoro Integration Verification Suite", () =>
   });
 
   describe("7. Responsive Desktop & Mobile Viewports", () => {
-    it("renders Day Map centerpiece and Smart Zoom Timeline directly without cluttered tabs", () => {
+    it("renders Day Map centerpiece with direct cube interactivity and confirms timeline is removed", () => {
       renderWorkspace();
 
       // Ensure 24-Hour Day Map is directly present as centerpiece
       expect(screen.getByText("24-Hour Day Map")).toBeInTheDocument();
 
-      // Ensure Smart Zoom Timeline Editor is directly accessible without tabs
-      expect(screen.getByLabelText("Smart Zoom Timeline Editor")).toBeInTheDocument();
+      // Ensure Smart Zoom Timeline Editor is completely removed
+      expect(screen.queryByLabelText("Smart Zoom Timeline Editor")).not.toBeInTheDocument();
 
       // Ensure old tab switcher is removed
       expect(screen.queryByRole("button", { name: "Task Library" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Timeline Schedule" })).not.toBeInTheDocument();
 
-      // Tapping a time slot cube navigates without opening modal
+      // Tapping an empty time slot cube opens the Add Block popup directly
       const tenAmCube = screen.getByRole("button", { name: /Time slot 10:00 AM/i });
       fireEvent.click(tenAmCube);
-      expect(screen.queryByText("Quick Create Block")).not.toBeInTheDocument();
-
-      // Tapping an empty slot inside Smart Zoom opens Quick Create
-      const emptySlot = screen.getByRole("button", { name: /Schedule at 10:00 AM/i });
-      fireEvent.click(emptySlot);
-      expect(screen.getByText("Quick Create Block")).toBeInTheDocument();
+      expect(screen.getByText("Add Time Block")).toBeInTheDocument();
     });
   });
 

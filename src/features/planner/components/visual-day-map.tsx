@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { isToday, parseISO } from "date-fns";
 import {
   Clock,
@@ -10,9 +10,14 @@ import {
   Moon,
   CheckCircle2,
   Layers,
+  Plus,
+  MousePointer,
+  RotateCcw,
+  X,
 } from "lucide-react";
-import type { ScheduledTaskBlock } from "@/features/calendar/types";
+import type { ScheduledTaskBlock, RecurrenceRule } from "@/features/calendar/types";
 import { useCalendar } from "@/features/calendar/calendar-context";
+import { useOptionalPomodoro } from "../pomodoro-context";
 import {
   DayMapCube,
   DEFAULT_PLANNER_CATEGORIES,
@@ -20,14 +25,16 @@ import {
 import {
   calculateDayMapCubes,
   formatMinutesTo12h,
+  formatMinutesToHHMM,
   parseHHMM,
 } from "../services/smart-scheduler";
+import { DayMapBlockDialog } from "./day-map-block-dialog";
 
 interface VisualDayMapProps {
   currentDateStr: string;
   allBlocks: ScheduledTaskBlock[];
   activeBlockId?: string;
-  onSelectTimeSlot: (timeHHMM: string, block?: ScheduledTaskBlock) => void;
+  onSelectTimeSlot?: (timeHHMM: string, block?: ScheduledTaskBlock) => void;
   onManageCategories?: () => void;
 }
 
@@ -69,10 +76,38 @@ export function VisualDayMap({
   onSelectTimeSlot,
   onManageCategories,
 }: VisualDayMapProps) {
-  const { plannerCategories } = useCalendar();
+  const {
+    plannerCategories,
+    scheduleTaskBlock,
+    updateTaskBlock,
+    deleteTaskBlock,
+  } = useCalendar();
+
+  const pomodoro = useOptionalPomodoro();
+
   const categories = plannerCategories?.length ? plannerCategories : DEFAULT_PLANNER_CATEGORIES;
 
   const [hoveredCube, setHoveredCube] = useState<DayMapCube | null>(null);
+
+  // Drag selection state for desktop
+  const [dragStartIndex, setDragStartIndex] = useState<number | null>(null);
+  const [dragCurrentIndex, setDragCurrentIndex] = useState<number | null>(null);
+  const [isMouseDown, setIsMouseDown] = useState(false);
+  const hasMovedRef = useRef(false);
+
+  // Mobile two-tap range selection mode
+  const [isMobileRangeMode, setIsMobileRangeMode] = useState(false);
+  const [mobileRangeStart, setMobileRangeStart] = useState<number | null>(null);
+
+  // Block Dialog State (for creating new block or editing existing block)
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [dialogBlock, setDialogBlock] = useState<ScheduledTaskBlock | null>(null);
+  const [dialogStartTime, setDialogStartTime] = useState("09:00");
+  const [dialogEndTime, setDialogEndTime] = useState("09:30");
+  const [dialogDuration, setDialogDuration] = useState(30);
+
+  // Undo deletion state
+  const [undoDeletedBlock, setUndoDeletedBlock] = useState<ScheduledTaskBlock | null>(null);
 
   // Compute 48 cubes using pure scheduler logic
   const cubes = useMemo(() => {
@@ -121,13 +156,214 @@ export function VisualDayMap({
   const allocatedHoursFormatted = `${Math.floor(totalAllocatedMinutes / 60)}h ${totalAllocatedMinutes % 60}m`;
   const overallOccupancyPercent = Math.min(100, Math.round((totalAllocatedMinutes / 1440) * 100));
 
+  // Determine if a cube index is part of active drag selection or mobile range selection
+  const isIndexInActiveRange = (index: number): boolean => {
+    if (isMouseDown && dragStartIndex !== null && dragCurrentIndex !== null) {
+      const min = Math.min(dragStartIndex, dragCurrentIndex);
+      const max = Math.max(dragStartIndex, dragCurrentIndex);
+      return index >= min && index <= max;
+    }
+    if (isMobileRangeMode && mobileRangeStart !== null) {
+      return index === mobileRangeStart;
+    }
+    return false;
+  };
+
+  // Helper to open Add Block dialog for a specified cube range
+  const openAddBlockForRange = (startIdx: number, endIdx: number) => {
+    const minIdx = Math.min(startIdx, endIdx);
+    const maxIdx = Math.max(startIdx, endIdx);
+    const startMins = minIdx * 30;
+    const endMins = (maxIdx + 1) * 30;
+    const duration = (maxIdx - minIdx + 1) * 30;
+
+    setDialogBlock(null);
+    setDialogStartTime(formatMinutesToHHMM(startMins));
+    setDialogEndTime(formatMinutesToHHMM(endMins));
+    setDialogDuration(duration);
+    setIsDialogOpen(true);
+  };
+
+  // Open block details/editor for an existing block
+  const openBlockEditor = (block: ScheduledTaskBlock) => {
+    setDialogBlock(block);
+    setDialogStartTime(block.startTime);
+    setDialogEndTime(block.endTime);
+    setDialogDuration(block.durationMinutes);
+    setIsDialogOpen(true);
+    if (onSelectTimeSlot) {
+      onSelectTimeSlot(block.startTime, block);
+    }
+  };
+
+  // Global mouseup listener for desktop drag selection
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (!isMouseDown) return;
+
+      if (dragStartIndex !== null && hasMovedRef.current) {
+        const targetEnd = dragCurrentIndex ?? dragStartIndex;
+        openAddBlockForRange(dragStartIndex, targetEnd);
+      }
+
+      setIsMouseDown(false);
+      setDragStartIndex(null);
+      setDragCurrentIndex(null);
+      hasMovedRef.current = false;
+    };
+
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+    return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
+  }, [isMouseDown, dragStartIndex, dragCurrentIndex]);
+
+  // Cube Mouse/Click Handlers
+  const handleCubeMouseDown = (cube: DayMapCube, e: React.MouseEvent) => {
+    // Only handle primary left click
+    if (e.button !== 0) return;
+
+    // If cube has an existing block, open its details directly (do not drag)
+    if (cube.primaryBlock) {
+      openBlockEditor(cube.primaryBlock);
+      return;
+    }
+
+    // In mobile range mode, ignore mouse down (handled by click/tap)
+    if (isMobileRangeMode) return;
+
+    // Desktop: start drag selection on empty cube
+    setIsMouseDown(true);
+    setDragStartIndex(cube.index);
+    setDragCurrentIndex(cube.index);
+    hasMovedRef.current = false;
+  };
+
+  const handleCubeMouseEnter = (cube: DayMapCube) => {
+    setHoveredCube(cube);
+    if (isMouseDown && dragStartIndex !== null) {
+      if (cube.index !== dragStartIndex) {
+        hasMovedRef.current = true;
+      }
+      setDragCurrentIndex(cube.index);
+    }
+  };
+
+  const handleCubeClick = (cube: DayMapCube) => {
+    // If occupied, open block editor
+    if (cube.primaryBlock) {
+      openBlockEditor(cube.primaryBlock);
+      return;
+    }
+
+    // Mobile Range Mode handling
+    if (isMobileRangeMode) {
+      if (mobileRangeStart === null) {
+        setMobileRangeStart(cube.index);
+      } else {
+        openAddBlockForRange(mobileRangeStart, cube.index);
+        setMobileRangeStart(null);
+        setIsMobileRangeMode(false);
+      }
+      return;
+    }
+
+    // Direct click or tap on empty cube
+    openAddBlockForRange(cube.index, cube.index);
+  };
+
+  // Save Block (new or updated)
+  const handleSaveBlock = (data: {
+    id?: string;
+    title: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    durationMinutes: number;
+    categoryId: string;
+    color: string;
+    recurrence?: RecurrenceRule;
+  }) => {
+    if (data.id) {
+      updateTaskBlock(data.id, {
+        title: data.title,
+        date: data.date,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        durationMinutes: data.durationMinutes,
+        categoryId: data.categoryId,
+        color: data.color,
+        recurrence: data.recurrence,
+      });
+    } else {
+      scheduleTaskBlock(undefined, data.date, data.startTime, data.durationMinutes, {
+        title: data.title,
+        endTime: data.endTime,
+        categoryId: data.categoryId,
+        color: data.color,
+        recurrence: data.recurrence,
+      });
+    }
+  };
+
+  // Delete Block with Undo
+  const handleDeleteBlock = (blockId: string) => {
+    const toDelete = allBlocks.find((b) => b.id === blockId);
+    if (toDelete) {
+      setUndoDeletedBlock(toDelete);
+      deleteTaskBlock(blockId);
+    }
+  };
+
+  // Undo delete
+  const handleUndoDelete = () => {
+    if (!undoDeletedBlock) return;
+    scheduleTaskBlock(undoDeletedBlock.taskId, undoDeletedBlock.date, undoDeletedBlock.startTime, undoDeletedBlock.durationMinutes, {
+      title: undoDeletedBlock.title,
+      endTime: undoDeletedBlock.endTime,
+      categoryId: undoDeletedBlock.categoryId,
+      color: undoDeletedBlock.color,
+      recurrence: undoDeletedBlock.recurrence,
+    });
+    setUndoDeletedBlock(null);
+  };
+
+  // Toggle Completion
+  const handleToggleComplete = (blockId: string) => {
+    const block = allBlocks.find((b) => b.id === blockId);
+    if (block) {
+      updateTaskBlock(blockId, { completed: !block.completed });
+    }
+  };
+
+  // Start Pomodoro Focus
+  const handleStartPomodoro = (block: ScheduledTaskBlock) => {
+    if (pomodoro) {
+      pomodoro.startPomodoro(block);
+      pomodoro.openFocusModal();
+    }
+  };
+
+  // Standalone Add Block button click (defaults to 10:00 AM or next slot)
+  const handleAddBlockStandalone = () => {
+    const defaultStart = currentHalfHourIndex >= 0 && currentHalfHourIndex < 47
+      ? formatMinutesToHHMM((currentHalfHourIndex + 1) * 30)
+      : "10:00";
+    const startMins = parseHHMM(defaultStart);
+    const endMins = startMins + 30;
+
+    setDialogBlock(null);
+    setDialogStartTime(defaultStart);
+    setDialogEndTime(formatMinutesToHHMM(endMins));
+    setDialogDuration(30);
+    setIsDialogOpen(true);
+  };
+
   return (
     <section
       aria-label="24-Hour Visual Day Map"
-      className="rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-4"
+      className="rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-4 select-none"
     >
       {/* Header bar */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-0.5">
           <div className="flex items-center gap-2">
             <h2 className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
@@ -141,30 +377,85 @@ export function VisualDayMap({
             </span>
           </div>
           <p className="text-xs text-muted-foreground">
-            A continuous visual map of your entire 24 hours. Click any cube to jump into that time slot.
+            Click any empty cube to add a block, drag across cubes to select a duration, or click an existing block to edit.
           </p>
         </div>
 
-        {/* Occupancy stats pill & category link */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-            <span>Scheduled:</span>
-            <span className="font-bold text-foreground">{allocatedHoursFormatted}</span>
-            <span className="text-muted-foreground/60">({overallOccupancyPercent}%)</span>
-          </div>
+        {/* Action Controls & Occupancy stats */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {/* + Add Block Button */}
+          <button
+            type="button"
+            onClick={handleAddBlockStandalone}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:opacity-90 shadow-2xs transition-all cursor-pointer"
+            title="Create a new time block"
+          >
+            <Plus size={14} />
+            <span>Add Block</span>
+          </button>
 
+          {/* Mobile Select Range Mode Toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsMobileRangeMode(!isMobileRangeMode);
+              setMobileRangeStart(null);
+            }}
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shadow-2xs ${
+              isMobileRangeMode
+                ? "border-primary bg-primary/10 text-primary font-bold ring-1 ring-primary"
+                : "border-border bg-background text-foreground hover:bg-muted"
+            }`}
+            title="Toggle two-tap range selection mode"
+          >
+            <MousePointer size={13} />
+            <span>{isMobileRangeMode ? "Cancel Range" : "Select Range"}</span>
+          </button>
+
+          {/* Manage Categories Link */}
           {onManageCategories && (
             <button
               type="button"
               onClick={onManageCategories}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted shadow-2xs transition-all cursor-pointer"
             >
               <Layers size={13} />
-              <span>Categories</span>
+              <span>Manage Categories</span>
             </button>
           )}
+
+          {/* Occupancy pill */}
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground bg-muted/60 px-2.5 py-1 rounded-xl border border-border/60">
+            <span>Scheduled:</span>
+            <span className="font-bold text-foreground">{allocatedHoursFormatted}</span>
+            <span className="text-muted-foreground/70 text-2xs">({overallOccupancyPercent}%)</span>
+          </div>
         </div>
       </div>
+
+      {/* Mobile Range Banner indicator */}
+      {isMobileRangeMode && (
+        <div className="rounded-xl border border-primary/40 bg-primary/10 p-2.5 text-xs text-primary flex items-center justify-between animate-in fade-in-0">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+            <span>
+              {mobileRangeStart === null
+                ? "Tap a start cube on the map to begin range selection."
+                : `Start set at ${formatMinutesTo12h(mobileRangeStart * 30)}. Now tap an end cube.`}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setIsMobileRangeMode(false);
+              setMobileRangeStart(null);
+            }}
+            className="text-xs font-bold hover:underline"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* 4 Rows of 12 Cubes Grid */}
       <div className="space-y-3 pt-1">
@@ -197,6 +488,7 @@ export function VisualDayMap({
                   const isCompleted = cube.status === "completed";
                   const isSelected = Boolean(activeBlockId && cube.primaryBlock?.id === activeBlockId);
                   const isActive = cube.status === "active" || isSelected;
+                  const isInPreviewRange = isIndexInActiveRange(cube.index);
 
                   // Check if block spans continuously into previous or next cube
                   const prevCube = cube.col > 0 ? rowCubes[cube.col - 1] : null;
@@ -218,12 +510,13 @@ export function VisualDayMap({
                     <div
                       key={cube.index}
                       className="relative group"
-                      onMouseEnter={() => setHoveredCube(cube)}
+                      onMouseEnter={() => handleCubeMouseEnter(cube)}
                       onMouseLeave={() => setHoveredCube(null)}
                     >
                       <button
                         type="button"
-                        onClick={() => onSelectTimeSlot(cube.timeLabel, cube.primaryBlock)}
+                        onMouseDown={(e) => handleCubeMouseDown(cube, e)}
+                        onClick={() => handleCubeClick(cube)}
                         aria-label={`Time slot ${cube.formattedLabel}: ${
                           hasBlocks ? cube.primaryBlock?.title : "Unscheduled"
                         }`}
@@ -239,6 +532,7 @@ export function VisualDayMap({
                           }
                           ${isCurrent ? "ring-2 ring-primary ring-offset-1 shadow-xs" : ""}
                           ${isActive ? "ring-2 ring-primary ring-offset-2 z-20 scale-[1.03] shadow-md brightness-110" : ""}
+                          ${isInPreviewRange ? "ring-2 ring-primary bg-primary/25 border-primary scale-[1.03] z-20 shadow-xs" : ""}
                           ${spansFromPrev ? "rounded-l-xs border-l-0" : ""}
                           ${spansToNext ? "rounded-r-xs border-r-0" : ""}
                         `}
@@ -257,7 +551,7 @@ export function VisualDayMap({
                         )}
 
                         {/* Cube Content Layer */}
-                        <div className="relative z-10 flex flex-col justify-between h-full p-1 sm:p-1.5 select-none">
+                        <div className="relative z-10 flex flex-col justify-between h-full p-1 sm:p-1.5 select-none pointer-events-none">
                           <div className="flex items-center justify-between">
                             <span
                               className={`text-[9px] sm:text-[10px] font-mono leading-none ${
@@ -289,28 +583,28 @@ export function VisualDayMap({
                           <div className="flex items-center justify-between text-[8px]">
                             {hasBlocks ? (
                               <span
-                                className={`text-[8px] font-bold leading-none ${
+                                className={`text-[8px] font-bold leading-none truncate max-w-[50px] ${
                                   cube.fillPercent >= 60 ? "text-white/90 drop-shadow-xs" : "text-foreground/80"
                                 }`}
                               >
-                                {isSuggested ? "★ Suggestion" : cube.fillPercent < 100 ? `${Math.round((cube.fillPercent * 30) / 100)}m` : "30m"}
+                                {isSuggested ? "★" : cube.fillPercent < 100 ? `${Math.round((cube.fillPercent * 30) / 100)}m` : "30m"}
                               </span>
                             ) : (
                               <span className="text-[8px] text-muted-foreground/40 leading-none">
-                                free
+                                {isInPreviewRange ? "select" : "free"}
                               </span>
                             )}
                           </div>
                         </div>
 
-                        {/* Active pulsing border when active in focus mode */}
+                        {/* Active pulsing border when active */}
                         {isActive && (
                           <div className="absolute inset-0 rounded-lg border-2 border-primary animate-pulse pointer-events-none" />
                         )}
                       </button>
 
                       {/* Tooltip on hover */}
-                      {hoveredCube?.index === cube.index && (
+                      {hoveredCube?.index === cube.index && !isMouseDown && (
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-52 p-2.5 rounded-xl bg-popover text-popover-foreground border border-border shadow-lg text-xs pointer-events-none animate-in fade-in-0 zoom-in-95 duration-100">
                           <div className="flex items-center justify-between pb-1 border-b border-border/60 mb-1.5">
                             <span className="font-bold font-mono text-2xs text-muted-foreground">
@@ -349,10 +643,13 @@ export function VisualDayMap({
                                   </div>
                                 </div>
                               ))}
+                              <p className="text-3xs text-muted-foreground/80 italic pt-1 border-t border-border/40">
+                                Click to view or edit this block.
+                              </p>
                             </div>
                           ) : (
                             <p className="text-2xs text-muted-foreground italic">
-                              Free 30-minute block. Click to schedule here.
+                              Free 30-minute block. Click to schedule or drag to select range.
                             </p>
                           )}
                         </div>
@@ -370,7 +667,7 @@ export function VisualDayMap({
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-2xs text-muted-foreground border-t border-border/50">
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-semibold text-foreground">Categories:</span>
-          {categories.slice(0, 5).map((cat) => (
+          {categories.slice(0, 6).map((cat) => (
             <div key={cat.id} className="flex items-center gap-1.5">
               <span
                 className="h-2.5 w-2.5 rounded-full shrink-0 border border-black/10 dark:border-white/10"
@@ -396,6 +693,46 @@ export function VisualDayMap({
           </div>
         </div>
       </div>
+
+      {/* Minimal Add/Edit Block Dialog */}
+      <DayMapBlockDialog
+        isOpen={isDialogOpen}
+        block={dialogBlock}
+        initialDate={currentDateStr}
+        initialStartTime={dialogStartTime}
+        initialEndTime={dialogEndTime}
+        initialDurationMinutes={dialogDuration}
+        allBlocks={allBlocks}
+        onClose={() => setIsDialogOpen(false)}
+        onSave={handleSaveBlock}
+        onDelete={handleDeleteBlock}
+        onToggleComplete={handleToggleComplete}
+        onStartPomodoro={handleStartPomodoro}
+      />
+
+      {/* Undo Deletion Floating Banner */}
+      {undoDeletedBlock && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5 shadow-xl animate-in fade-in slide-in-from-bottom-2">
+          <div className="text-xs text-foreground">
+            Deleted block <strong>&quot;{undoDeletedBlock.title}&quot;</strong>
+          </div>
+          <button
+            type="button"
+            onClick={handleUndoDelete}
+            className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:opacity-90 transition-all cursor-pointer shadow-2xs"
+          >
+            <RotateCcw size={12} />
+            <span>Undo</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setUndoDeletedBlock(null)}
+            className="p-1 text-muted-foreground hover:text-foreground rounded-lg"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
     </section>
   );
 }
