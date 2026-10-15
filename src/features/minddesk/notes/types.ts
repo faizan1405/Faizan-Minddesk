@@ -254,3 +254,11 @@ export function isDescendantOf(
   return false;
 }
 
+export function isTopLevelNote(note: NoteItem): boolean {
+  return !note.parentId;
+}
+
+export function getDirectSubpages(noteId: string, allNotes: NoteItem[]): NoteItem[] {
+  return allNotes.filter((n) => n.parentId === noteId);
+}
+

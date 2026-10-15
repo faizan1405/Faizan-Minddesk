@@ -197,18 +197,40 @@ async function runNotesBrowserAcceptance() {
     await page1.goto(`${BASE_URL}/notes`, { waitUntil: "networkidle", timeout: 15000 });
     await page1.waitForTimeout(1000);
 
+    // 1. Notes Home must show only top-level pages
     const hasProjectA = await page1.locator('text="Acme Corporation"').first().isVisible();
     const hasOverview = await page1.locator('text="Acme Corporation Overview"').first().isVisible();
     const hasSpecPage = await page1.locator('text="Architecture Specification"').first().isVisible();
-    const hasSubpage = await page1.locator('text="System Design"').first().isVisible();
-    const hasGrandchild = await page1.locator('text="Data Flow Diagram"').first().isVisible();
+    const hasSubpageOnHome = await page1.locator('text="System Design"').first().isVisible().catch(() => false);
+    const hasGrandchildOnHome = await page1.locator('text="Data Flow Diagram"').first().isVisible().catch(() => false);
 
-    if (hasProjectA && hasOverview && hasSpecPage && hasSubpage && hasGrandchild) {
-      recordResult(2, "Hierarchy Navigation", "PASS", "Project, Overview, Page, Subpage, and Grandchild rendered with deterministic 36-char ID");
+    const topLevelOnlyOnHome = hasProjectA && hasOverview && hasSpecPage && !hasSubpageOnHome && !hasGrandchildOnHome;
+
+    // 2. Open parent page (Architecture Specification) to verify subpages appear when opened
+    const specCard = page1.locator('button:has-text("Architecture Specification")').first();
+    await specCard.click();
+    await page1.waitForTimeout(800);
+
+    const subpagesSection = page1.locator('[aria-label="Subpages section"]');
+    const hasSubpagesSection = await subpagesSection.isVisible();
+    const hasSubpageInParent = await page1.locator('[aria-label="Subpages section"] >> text="System Design"').first().isVisible();
+    const hasGrandchildInParent = (await page1.locator('[aria-label="Subpages section"] >> text="Data Flow Diagram"').count()) > 0;
+
+    const directHierarchyValid = hasSubpagesSection && hasSubpageInParent && !hasGrandchildInParent;
+
+    if (topLevelOnlyOnHome && directHierarchyValid) {
+      recordResult(2, "Top-Level Home & Subpages On Open", "PASS", "Notes Home displays only top-level pages; parent page reveals direct subpages when opened");
     } else {
-      recordResult(2, "Hierarchy Navigation", "FAIL", `Elements not found: project=${hasProjectA}, overview=${hasOverview}, page=${hasSpecPage}, sub=${hasSubpage}, grand=${hasGrandchild}`);
+      recordResult(2, "Top-Level Home & Subpages On Open", "FAIL", `Mismatch: topLevelOnly=${topLevelOnlyOnHome} (project=${hasProjectA}, overview=${hasOverview}, spec=${hasSpecPage}, subHidden=${!hasSubpageOnHome}, grandHidden=${!hasGrandchildOnHome}), directHierarchy=${directHierarchyValid} (section=${hasSubpagesSection}, subInParent=${hasSubpageInParent}, grandHidden=${!hasGrandchildInParent})`);
     }
     await page1.screenshot({ path: path.join(ARTIFACT_DIR, "notes-test-2-hierarchy.png") });
+
+    // Return to notes home gallery for subsequent tests
+    const allNotesBtn = page1.locator('button:has-text("All notes")').first();
+    if (await allNotesBtn.isVisible()) {
+      await allNotesBtn.click();
+      await page1.waitForTimeout(600);
+    }
 
     // -------------------------------------------------------------------------
     // CRITERION 3: Overview Writing Saves Successfully
@@ -286,7 +308,7 @@ async function runNotesBrowserAcceptance() {
     await mobilePage.goto(`${BASE_URL}/notes`, { waitUntil: "networkidle", timeout: 15000 });
     await mobilePage.waitForTimeout(1000);
 
-    const mobileToggle = mobilePage.locator('button:has-text("Documents"), button[title*="sidebar"], [aria-label*="sidebar"]').first();
+    const mobileToggle = mobilePage.locator('button:has-text("Sidebar"), button:has-text("Documents"), button[title*="sidebar"], [aria-label*="sidebar"]').first();
     const isToggleVisible = await mobileToggle.isVisible();
 
     recordResult(
