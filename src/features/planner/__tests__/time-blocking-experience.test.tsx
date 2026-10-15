@@ -47,8 +47,8 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
     expect(screen.getByText("24-Hour Day Map")).toBeInTheDocument();
     expect(screen.getByLabelText("24-Hour Visual Day Map")).toBeInTheDocument();
 
-    // Today's Top 3 Priorities shelf
-    expect(screen.getByText(/Today's Top 3 Priorities/i)).toBeInTheDocument();
+    // Today's Top 3 Priorities shelf removed from Planner
+    expect(screen.queryByText(/Today's Top 3 Priorities/i)).not.toBeInTheDocument();
 
     // Smart Zoom Timeline Editor directly accessible (no tab switcher)
     expect(screen.getByLabelText("Smart Zoom Timeline Editor")).toBeInTheDocument();
@@ -86,13 +86,19 @@ describe("MindDesk Phase 6: Advanced Time Blocking & Daily Planning Experience",
     });
   });
 
-  it("opens Quick Create modal when clicking a time slot cube in the 24-Hour Day Map", async () => {
+  it("navigates Smart Zoom timeline when clicking a time slot cube in 24-Hour Day Map, and opens Quick Create when clicking an empty slot in Smart Zoom", async () => {
     renderPlannerWorkspace();
 
     const tenAmCube = screen.getByRole("button", { name: /Time slot 10:00 AM/i });
     fireEvent.click(tenAmCube);
 
-    // Modal opens with 10:00 start time
+    // Cube click navigates without opening modal
+    expect(screen.queryByText("Quick Create Block")).not.toBeInTheDocument();
+
+    // Clicking an empty slot inside Smart Zoom opens Quick Create modal
+    const emptySlot = screen.getByRole("button", { name: /Schedule at 10:00 AM/i });
+    fireEvent.click(emptySlot);
+
     await waitFor(() => {
       expect(screen.getByText("Quick Create Block")).toBeInTheDocument();
     });

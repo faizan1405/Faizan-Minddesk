@@ -27,7 +27,7 @@ interface VisualDayMapProps {
   currentDateStr: string;
   allBlocks: ScheduledTaskBlock[];
   activeBlockId?: string;
-  onSelectTimeSlot: (timeHHMM: string) => void;
+  onSelectTimeSlot: (timeHHMM: string, block?: ScheduledTaskBlock) => void;
   onManageCategories?: () => void;
 }
 
@@ -195,7 +195,8 @@ export function VisualDayMap({
                   const hasBlocks = cube.blocks.length > 0;
                   const isSuggested = cube.status === "suggested";
                   const isCompleted = cube.status === "completed";
-                  const isActive = cube.status === "active";
+                  const isSelected = Boolean(activeBlockId && cube.primaryBlock?.id === activeBlockId);
+                  const isActive = cube.status === "active" || isSelected;
 
                   // Check if block spans continuously into previous or next cube
                   const prevCube = cube.col > 0 ? rowCubes[cube.col - 1] : null;
@@ -222,7 +223,7 @@ export function VisualDayMap({
                     >
                       <button
                         type="button"
-                        onClick={() => onSelectTimeSlot(cube.timeLabel)}
+                        onClick={() => onSelectTimeSlot(cube.timeLabel, cube.primaryBlock)}
                         aria-label={`Time slot ${cube.formattedLabel}: ${
                           hasBlocks ? cube.primaryBlock?.title : "Unscheduled"
                         }`}
@@ -237,6 +238,7 @@ export function VisualDayMap({
                               : "border-border/60 bg-background/80 hover:bg-muted/80 hover:border-primary/40"
                           }
                           ${isCurrent ? "ring-2 ring-primary ring-offset-1 shadow-xs" : ""}
+                          ${isActive ? "ring-2 ring-primary ring-offset-2 z-20 scale-[1.03] shadow-md brightness-110" : ""}
                           ${spansFromPrev ? "rounded-l-xs border-l-0" : ""}
                           ${spansToNext ? "rounded-r-xs border-r-0" : ""}
                         `}

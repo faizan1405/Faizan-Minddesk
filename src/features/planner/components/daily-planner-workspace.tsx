@@ -16,7 +16,6 @@ import {
   Brain,
 } from "lucide-react";
 import { ScheduleHabitDialog } from "@/features/habits/components/schedule-habit-dialog";
-import { TodaysPrioritiesShelf } from "./todays-priorities-shelf";
 import { DailyProgressCard } from "./daily-progress-card";
 import { SmartZoomTimeline } from "./smart-zoom-timeline";
 import { VisualDayMap } from "./visual-day-map";
@@ -24,7 +23,7 @@ import { PlannerCategoriesModal } from "./planner-categories-modal";
 import { PlannerRoutinesModal } from "./planner-routines-modal";
 import { PomodoroProvider, usePomodoro } from "../pomodoro-context";
 import { PomodoroFocusView } from "./pomodoro-focus-view";
-import { PlannerTask } from "@/features/calendar/types";
+import type { ScheduledTaskBlock } from "@/features/calendar/types";
 import { generateFixedRoutineBlocks } from "../services/smart-scheduler";
 
 function DailyPlannerWorkspaceContent() {
@@ -44,9 +43,9 @@ function DailyPlannerWorkspaceContent() {
     format(new Date(), "yyyy-MM-dd")
   );
 
-  // Modals and selection state
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
-  const [taskToSchedule, setTaskToSchedule] = useState<PlannerTask | null>(null);
+  // Selection and navigation state
+  const [navigateToTimeSlot, setNavigateToTimeSlot] = useState<string | null>(null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [scheduleHabitOpen, setScheduleHabitOpen] = useState(false);
   const [categoriesModalOpen, setCategoriesModalOpen] = useState(false);
   const [routinesModalOpen, setRoutinesModalOpen] = useState(false);
@@ -84,12 +83,13 @@ function DailyPlannerWorkspaceContent() {
     );
   }
 
-  const handleOpenScheduleForTask = (task: PlannerTask) => {
-    setTaskToSchedule(task);
-  };
-
-  const handleSelectCubeTimeSlot = (timeHHMM: string) => {
-    setSelectedTimeSlot(timeHHMM);
+  const handleSelectCubeTimeSlot = (timeHHMM: string, block?: ScheduledTaskBlock) => {
+    setNavigateToTimeSlot(timeHHMM);
+    if (block) {
+      setSelectedBlockId(block.id);
+    } else {
+      setSelectedBlockId(null);
+    }
   };
 
   const handleSaveNotes = () => {
@@ -256,6 +256,7 @@ function DailyPlannerWorkspaceContent() {
       <VisualDayMap
         currentDateStr={currentDateStr}
         allBlocks={allDayBlocks}
+        activeBlockId={selectedBlockId || undefined}
         onSelectTimeSlot={handleSelectCubeTimeSlot}
         onManageCategories={() => setCategoriesModalOpen(true)}
       />
@@ -263,20 +264,14 @@ function DailyPlannerWorkspaceContent() {
       {/* Daily Progress & Analytics Header */}
       <DailyProgressCard currentDateStr={currentDateStr} />
 
-      {/* Today's Top 3 Priorities Shelf */}
-      <TodaysPrioritiesShelf
-        currentDateStr={currentDateStr}
-        onOpenSchedule={handleOpenScheduleForTask}
-      />
-
       {/* Interactive Time Blocking Timeline & Smart Zoom Editor */}
       <SmartZoomTimeline
         currentDateStr={currentDateStr}
         onDateChange={setCurrentDateStr}
-        selectedTimeSlot={selectedTimeSlot}
-        onClearSelectedTimeSlot={() => setSelectedTimeSlot(null)}
-        taskToSchedule={taskToSchedule}
-        onClearTaskToSchedule={() => setTaskToSchedule(null)}
+        navigateToTimeSlot={navigateToTimeSlot}
+        onClearNavigateToTimeSlot={() => setNavigateToTimeSlot(null)}
+        selectedBlockId={selectedBlockId}
+        onSelectBlock={(blockId) => setSelectedBlockId(blockId)}
       />
 
       {/* Schedule Habit / Routine Dialog */}

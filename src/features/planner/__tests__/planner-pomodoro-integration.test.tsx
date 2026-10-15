@@ -416,9 +416,14 @@ describe("MINDDESK — Planner & Pomodoro Integration Verification Suite", () =>
       expect(screen.queryByRole("button", { name: "Task Library" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Timeline Schedule" })).not.toBeInTheDocument();
 
-      // Quick Create works by selecting a time slot cube from Day Map
+      // Tapping a time slot cube navigates without opening modal
       const tenAmCube = screen.getByRole("button", { name: /Time slot 10:00 AM/i });
       fireEvent.click(tenAmCube);
+      expect(screen.queryByText("Quick Create Block")).not.toBeInTheDocument();
+
+      // Tapping an empty slot inside Smart Zoom opens Quick Create
+      const emptySlot = screen.getByRole("button", { name: /Schedule at 10:00 AM/i });
+      fireEvent.click(emptySlot);
       expect(screen.getByText("Quick Create Block")).toBeInTheDocument();
     });
   });

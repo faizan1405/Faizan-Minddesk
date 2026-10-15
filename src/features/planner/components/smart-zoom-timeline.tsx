@@ -34,6 +34,10 @@ import {
 interface SmartZoomTimelineProps {
   currentDateStr: string;
   onDateChange?: (dateStr: string) => void;
+  navigateToTimeSlot?: string | null;
+  onClearNavigateToTimeSlot?: () => void;
+  selectedBlockId?: string | null;
+  onSelectBlock?: (blockId: string | null) => void;
   selectedTimeSlot?: string | null;
   onClearSelectedTimeSlot?: () => void;
   taskToSchedule?: { id?: string; title: string; estimatedMinutes?: number } | null;
@@ -50,6 +54,10 @@ const WINDOW_FILTERS: Array<{ id: ZoomTimeWindow; label: string; startHour: numb
 
 export function SmartZoomTimeline({
   currentDateStr,
+  navigateToTimeSlot,
+  onClearNavigateToTimeSlot,
+  selectedBlockId,
+  onSelectBlock,
   selectedTimeSlot,
   onClearSelectedTimeSlot,
   taskToSchedule,
@@ -73,6 +81,11 @@ export function SmartZoomTimeline({
   const [zoomWindow, setZoomWindow] = useState<ZoomTimeWindow>("all");
   const [hourHeight, setHourHeight] = useState<number>(68); // 52, 68, 92
 
+  // Active window hours
+  const activeWindowConfig = useMemo(() => {
+    return WINDOW_FILTERS.find((w) => w.id === zoomWindow) || WINDOW_FILTERS[0];
+  }, [zoomWindow]);
+
   // Scroll ref
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -95,7 +108,31 @@ export function SmartZoomTimeline({
   // Overlap warning banner
   const [conflictNotice, setConflictNotice] = useState<string | null>(null);
 
-  // React to selected time slot from Visual 24-Hour Map
+  // Navigate Smart Zoom timeline to time without opening Quick Create
+  useEffect(() => {
+    if (navigateToTimeSlot) {
+      const hour = parseInt(navigateToTimeSlot.split(":")[0], 10) || 0;
+      if (hour < activeWindowConfig.startHour || hour >= activeWindowConfig.endHour) {
+        setZoomWindow("all");
+      }
+      if (scrollContainerRef.current) {
+        const targetTop = Math.max(0, (hour - 1) * hourHeight);
+        if (typeof scrollContainerRef.current.scrollTo === "function") {
+          scrollContainerRef.current.scrollTo({
+            top: targetTop,
+            behavior: "smooth",
+          });
+        } else {
+          scrollContainerRef.current.scrollTop = targetTop;
+        }
+      }
+      if (onClearNavigateToTimeSlot) {
+        onClearNavigateToTimeSlot();
+      }
+    }
+  }, [navigateToTimeSlot, hourHeight, onClearNavigateToTimeSlot, activeWindowConfig]);
+
+  // Backward compatibility: React to legacy selectedTimeSlot
   useEffect(() => {
     if (selectedTimeSlot) {
       setBlockStartTime(selectedTimeSlot);
@@ -113,7 +150,7 @@ export function SmartZoomTimeline({
     }
   }, [selectedTimeSlot, hourHeight, onClearSelectedTimeSlot]);
 
-  // React to task to schedule from Priorities shelf
+  // Backward compatibility: React to legacy taskToSchedule
   useEffect(() => {
     if (taskToSchedule) {
       setBlockTitle(taskToSchedule.title);
@@ -124,11 +161,6 @@ export function SmartZoomTimeline({
       if (onClearTaskToSchedule) onClearTaskToSchedule();
     }
   }, [taskToSchedule, onClearTaskToSchedule]);
-
-  // Active window hours
-  const activeWindowConfig = useMemo(() => {
-    return WINDOW_FILTERS.find((w) => w.id === zoomWindow) || WINDOW_FILTERS[0];
-  }, [zoomWindow]);
 
   const visibleHours = useMemo(() => {
     const list: number[] = [];
@@ -160,6 +192,33 @@ export function SmartZoomTimeline({
     }
     return combined;
   }, [scheduledBlocks, currentDateStr, fixedRoutineBlocks]);
+
+  // Scroll to selected block when selectedBlockId changes
+  useEffect(() => {
+    if (selectedBlockId) {
+      const targetBlock = allDayBlocks.find((b) => b.id === selectedBlockId);
+      if (targetBlock) {
+        const startMins = parseHHMM(targetBlock.startTime);
+        const hour = Math.floor(startMins / 60);
+        if (hour < activeWindowConfig.startHour || hour >= activeWindowConfig.endHour) {
+          setZoomWindow("all");
+        }
+        const windowStartMins = activeWindowConfig.startHour * 60;
+        const topPx = ((startMins - windowStartMins) / 60) * hourHeight;
+        if (scrollContainerRef.current && topPx >= 0) {
+          const targetTop = Math.max(0, topPx - hourHeight);
+          if (typeof scrollContainerRef.current.scrollTo === "function") {
+            scrollContainerRef.current.scrollTo({
+              top: targetTop,
+              behavior: "smooth",
+            });
+          } else {
+            scrollContainerRef.current.scrollTop = targetTop;
+          }
+        }
+      }
+    }
+  }, [selectedBlockId, allDayBlocks, activeWindowConfig, hourHeight]);
 
   // Flexible routines suggestions for today
   const { suggestedBlocks: flexibleSuggestions } = useMemo(() => {
@@ -461,6 +520,7 @@ export function SmartZoomTimeline({
       {/* 3. INTERACTIVE 24-HOUR / ZOOMED TIMELINE CANVAS */}
       <div
         ref={scrollContainerRef}
+        onClick={() => onSelectBlock?.(null)}
         className="relative flex-1 overflow-y-auto max-h-[640px] select-none"
       >
         <div
@@ -486,19 +546,52 @@ export function SmartZoomTimeline({
                   {displayLabel}
                 </div>
 
-                {/* Right Interactive Hour Slot Canvas */}
-                <div
-                  onClick={() => handleOpenQuickCreate(timeLabel)}
-                  className="flex-1 h-full border-l border-border/40 relative cursor-pointer hover:bg-muted/20 transition-colors"
-                  title={`Click to schedule at ${displayLabel}`}
-                >
-                  {/* Half-hour subtle dashed line */}
-                  <div className="absolute inset-x-0 top-1/2 border-b border-dashed border-border/30 pointer-events-none" />
+                {/* Right Interactive Hour Slot Canvas (Divided into two 30-min clickable targets) */}
+                <div className="flex-1 h-full border-l border-border/40 relative flex flex-col">
+                  {/* Top half (:00) */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleOpenQuickCreate(timeLabel)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleOpenQuickCreate(timeLabel);
+                      }
+                    }}
+                    className="flex-1 w-full relative cursor-pointer hover:bg-muted/20 active:bg-muted/30 transition-colors group/half flex items-center px-3"
+                    title={`Click to schedule at ${displayLabel}`}
+                    aria-label={`Schedule at ${displayLabel}`}
+                  >
+                    <div className="opacity-0 group-hover/half:opacity-100 transition-opacity text-2xs text-muted-foreground flex items-center gap-1 font-semibold pointer-events-none">
+                      <Plus size={11} />
+                      <span>Schedule at {displayLabel}</span>
+                    </div>
+                  </div>
 
-                  {/* Empty slot quick hover plus */}
-                  <div className="absolute left-3 top-2 opacity-0 group-hover:opacity-100 transition-opacity text-2xs text-muted-foreground flex items-center gap-1 font-semibold pointer-events-none">
-                    <Plus size={11} />
-                    <span>Schedule at {displayLabel}</span>
+                  {/* Bottom half (:30) */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      const halfHourTime = `${String(hour).padStart(2, "0")}:30`;
+                      handleOpenQuickCreate(halfHourTime);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        const halfHourTime = `${String(hour).padStart(2, "0")}:30`;
+                        handleOpenQuickCreate(halfHourTime);
+                      }
+                    }}
+                    className="flex-1 w-full border-t border-dashed border-border/30 relative cursor-pointer hover:bg-muted/20 active:bg-muted/30 transition-colors group/half30 flex items-center px-3"
+                    title={`Click to schedule at ${formatMinutesTo12h(hour * 60 + 30)}`}
+                    aria-label={`Schedule at ${formatMinutesTo12h(hour * 60 + 30)}`}
+                  >
+                    <div className="opacity-0 group-hover/half30:opacity-100 transition-opacity text-2xs text-muted-foreground flex items-center gap-1 font-semibold pointer-events-none">
+                      <Plus size={11} />
+                      <span>Schedule at {formatMinutesTo12h(hour * 60 + 30)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -529,24 +622,32 @@ export function SmartZoomTimeline({
 
             const isDone = block.completed;
             const isRoutine = block.blockType === "routine";
+            const isSelected = selectedBlockId === block.id;
             const blockColor = resolveCategoryColor(block.categoryId, block.color, categories);
 
             return (
               <div
                 key={block.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectBlock?.(block.id);
+                }}
                 style={{
                   top: topPx,
                   height: heightPx,
                   left: "5rem",
                   right: "1rem",
                   backgroundColor: `${blockColor}15`,
-                  borderColor: `${blockColor}60`,
+                  borderColor: isSelected ? blockColor : `${blockColor}60`,
                   borderLeftWidth: "4px",
                   borderLeftColor: blockColor,
                 }}
+                data-block-id={block.id}
+                data-selected={isSelected ? "true" : "false"}
                 className={`
-                  absolute rounded-xl border p-2 shadow-2xs transition-all duration-150 group z-10 flex flex-col justify-between overflow-hidden
+                  absolute rounded-xl border p-2 shadow-2xs transition-all duration-150 group z-10 flex flex-col justify-between overflow-hidden cursor-pointer
                   ${isDone ? "opacity-65" : "hover:shadow-md hover:brightness-105"}
+                  ${isSelected ? "ring-2 ring-primary ring-offset-2 z-30 scale-[1.01] shadow-lg brightness-105" : ""}
                 `}
               >
                 {/* Block header */}
@@ -568,7 +669,10 @@ export function SmartZoomTimeline({
                     </button>
 
                     <span
-                      onClick={() => handleOpenEdit(block)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenEdit(block);
+                      }}
                       className={`text-xs font-bold truncate cursor-pointer hover:underline ${
                         isDone ? "line-through text-muted-foreground" : "text-foreground"
                       }`}
@@ -588,8 +692,10 @@ export function SmartZoomTimeline({
                     />
                   </div>
 
-                  {/* Quick Action Buttons (shown on hover or tap) */}
-                  <div className="flex items-center gap-1 shrink-0 opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Quick Action Buttons (shown on hover or when selected) */}
+                  <div className={`flex items-center gap-1 shrink-0 transition-opacity ${
+                    isSelected ? "opacity-100" : "opacity-80 sm:opacity-0 group-hover:opacity-100"
+                  }`}>
                     {/* Launch Pomodoro */}
                     <button
                       type="button"

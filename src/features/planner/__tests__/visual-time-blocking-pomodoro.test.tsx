@@ -94,7 +94,7 @@ describe("Agent 2: Visual Time Blocking & Pomodoro Experience", () => {
       );
       expect(nineAmCube).toBeDefined();
       fireEvent.click(nineAmCube!);
-      expect(onSelectSlot).toHaveBeenCalledWith("09:00");
+      expect(onSelectSlot).toHaveBeenCalledWith("09:00", expect.anything());
     });
 
     it("displays the five default categories in the legend", () => {

@@ -51,10 +51,13 @@ async function runAudit() {
     const hasAfternoon = dayMapText.includes("Afternoon") && dayMapText.includes("12:00 PM – 6:00 PM");
     const hasEvening = dayMapText.includes("Evening") && dayMapText.includes("6:00 PM – 12:00 AM");
 
-    if (cubeCount === 48 && hasNight && hasMorning && hasAfternoon && hasEvening) {
-      record(1, "48-cube Day Map 24-Hour Coverage", "PASS", `Exactly 48 cubes rendered across 4 chronological 6-hour rows (Night, Morning, Afternoon, Evening = 24h total)`);
+    // Verify Today's Top 3 Priorities shelf is completely removed from Plan Your Day
+    const prioritiesCount = await page.locator('text="Today\'s Top 3 Priorities"').count();
+
+    if (cubeCount === 48 && hasNight && hasMorning && hasAfternoon && hasEvening && prioritiesCount === 0) {
+      record(1, "48-cube Day Map 24-Hour Coverage & Shelf Removal", "PASS", `Exactly 48 cubes rendered across 4 chronological 6-hour rows; Priorities Shelf completely removed from Plan Your Day`);
     } else {
-      record(1, "48-cube Day Map 24-Hour Coverage", "FAIL", `Found ${cubeCount} cubes. Rows verified: Night=${hasNight}, Morning=${hasMorning}, Afternoon=${hasAfternoon}, Evening=${hasEvening}`);
+      record(1, "48-cube Day Map 24-Hour Coverage & Shelf Removal", "FAIL", `Found ${cubeCount} cubes. Rows verified: Night=${hasNight}, Morning=${hasMorning}, Afternoon=${hasAfternoon}, Evening=${hasEvening}, PrioritiesShelf=${prioritiesCount}`);
     }
 
     // -------------------------------------------------------------
@@ -100,12 +103,28 @@ async function runAudit() {
     }
 
     // -------------------------------------------------------------
-    // Test 3: Quick Create, editing, deleting, moving, resizing and Undo
+    // Test 3: Day Map navigation, occupied block selection, Smart Zoom slot Quick Create, editing, deleting, resizing and Undo
     // -------------------------------------------------------------
-    console.log("\n--> Testing 3: Quick Create, Editing, Deleting, Resizing and Undo");
-    // Click an empty cube (e.g. 16:00 / 4:00 PM) to test Quick Create via Day Map
+    console.log("\n--> Testing 3: Day Map Navigation, Block Selection, Slot Quick Create, Editing, Deleting, Resizing and Undo");
+    // 1. Tapping an empty cube navigates without opening modal
     const cube16 = updatedDayMap.locator('button[aria-label*="Time slot 4:00 PM"]').first();
     await cube16.click();
+    await page.waitForTimeout(400);
+    const modalAfterCubeClick = await page.locator('h3:has-text("Quick Create Block")').count();
+
+    // 2. Tapping an occupied cube selects the corresponding block
+    const occupiedCube = updatedDayMap.locator('button[aria-label*="Architecture Deep Work"]').first();
+    let occupiedBlockSelected = false;
+    if (await occupiedCube.count() > 0) {
+      await occupiedCube.click();
+      await page.waitForTimeout(400);
+      const selectedBlock = page.locator('div[data-selected="true"]:has(span:has-text("Architecture Deep Work"))');
+      occupiedBlockSelected = (await selectedBlock.count()) > 0;
+    }
+
+    // 3. Tapping an empty slot inside Smart Zoom opens Quick Create
+    const emptySlot16 = page.locator('div[aria-label="Schedule at 4:00 PM"]').first();
+    await emptySlot16.click();
     await page.waitForSelector('h3:has-text("Quick Create Block")', { timeout: 5000 });
     await page.fill('input[placeholder*="Code Review"]', "Sprint Planning Session");
     await page.locator('button:has-text("Create Block")').click();
@@ -141,10 +160,10 @@ async function runAudit() {
       restoredSuccessfully = (await page.locator(blockCardSelector).count()) > 0;
     }
 
-    if (editedBlockVisible && deletedFromTimeline && (restoredSuccessfully || undoToast)) {
-      record(3, "Quick Create, Edit, Resize, Delete & Undo", "PASS", "Full block lifecycle verified: created from empty cube, edited title & duration, deleted, and restored via Undo");
+    if (modalAfterCubeClick === 0 && occupiedBlockSelected && editedBlockVisible && deletedFromTimeline && (restoredSuccessfully || undoToast)) {
+      record(3, "Day Map Navigation, Slot Quick Create, Edit, Resize, Delete & Undo", "PASS", "Tapping empty cube navigates timeline without modal; occupied cube selects block; empty slot in Smart Zoom opens Quick Create; editing, nudging, deleting, and Undo all verified");
     } else {
-      record(3, "Quick Create, Edit, Resize, Delete & Undo", "FAIL", `Edited: ${editedBlockVisible}, Deleted: ${deletedFromTimeline}, Restored: ${restoredSuccessfully}`);
+      record(3, "Day Map Navigation, Slot Quick Create, Edit, Resize, Delete & Undo", "FAIL", `ModalAfterCube: ${modalAfterCubeClick}, OccupiedSelected: ${occupiedBlockSelected}, Edited: ${editedBlockVisible}, Deleted: ${deletedFromTimeline}, Restored: ${restoredSuccessfully}`);
     }
 
     // -------------------------------------------------------------
@@ -338,11 +357,11 @@ async function runAudit() {
     const mobileTimelineCount = await page.locator('section[aria-label="Smart Zoom Timeline Editor"]').count();
     const legacyTabSwitcherCount = await page.locator('button:has-text("Task Library")').count();
 
-    // Verify Quick Create works smoothly on mobile by tapping a time slot cube
-    const testCube = page.locator('button[aria-label*="Time slot 2:00 PM"]').first();
+    // Verify Quick Create works smoothly on mobile by tapping an empty slot inside Smart Zoom (8:00 PM)
+    const mobileSlot = page.locator('div[aria-label="Schedule at 8:00 PM"]').first();
     let mobileQuickCreateWorked = false;
-    if (await testCube.count() > 0) {
-      await testCube.click();
+    if (await mobileSlot.count() > 0) {
+      await mobileSlot.click();
       await page.waitForTimeout(400);
       const modalHeader = page.locator('h3:has-text("Quick Create Block")').first();
       if (await modalHeader.count() > 0) {
@@ -350,7 +369,27 @@ async function runAudit() {
         // Close modal via Escape key or modal close button
         await page.keyboard.press("Escape");
         await page.waitForTimeout(400);
-        // If modal still open, click the close button inside modal
+        const modalContainer = page.locator('div:has(> div > div > h3:has-text("Quick Create Block"))');
+        if (await modalContainer.count() > 0) {
+          const closeBtn = modalContainer.locator('button:has(svg.lucide-x)').first();
+          if (await closeBtn.count() > 0) {
+            await closeBtn.click();
+          }
+        }
+        await page.waitForTimeout(300);
+      }
+    }
+
+    // Also verify separate "+ Add Block" action works smoothly on mobile
+    const addBlockBtn = page.locator('button:has-text("Add Block")').first();
+    let addBlockButtonWorked = false;
+    if (await addBlockBtn.count() > 0) {
+      await addBlockBtn.click();
+      await page.waitForTimeout(400);
+      if (await page.locator('h3:has-text("Quick Create Block")').count() > 0) {
+        addBlockButtonWorked = true;
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(400);
         const modalContainer = page.locator('div:has(> div > div > h3:has-text("Quick Create Block"))');
         if (await modalContainer.count() > 0) {
           const closeBtn = modalContainer.locator('button:has(svg.lucide-x)').first();
@@ -374,13 +413,14 @@ async function runAudit() {
       mobileTimelineCount > 0 &&
       legacyTabSwitcherCount === 0 &&
       mobileQuickCreateWorked &&
+      addBlockButtonWorked &&
       desktopDayMapCount > 0 &&
       desktopTimelineCount > 0;
 
     if (mobileResponsivePass) {
-      record(11, "Responsive Desktop & Mobile Viewports", "PASS", "Day Map centerpiece and Smart Zoom Timeline render directly without cluttered tab switcher; Quick Create opens and operates smoothly on mobile");
+      record(11, "Responsive Desktop & Mobile Viewports", "PASS", "Day Map centerpiece and Smart Zoom Timeline render directly without cluttered tab switcher; slot Quick Create and + Add Block button operate smoothly on mobile");
     } else {
-      record(11, "Responsive Desktop & Mobile Viewports", "FAIL", `Mobile audit details: dayMap=${mobileDayMapCount}, timeline=${mobileTimelineCount}, legacyTabs=${legacyTabSwitcherCount}, quickCreate=${mobileQuickCreateWorked}`);
+      record(11, "Responsive Desktop & Mobile Viewports", "FAIL", `Mobile audit details: dayMap=${mobileDayMapCount}, timeline=${mobileTimelineCount}, legacyTabs=${legacyTabSwitcherCount}, slotQuickCreate=${mobileQuickCreateWorked}, addBlock=${addBlockButtonWorked}`);
     }
 
     // -------------------------------------------------------------
