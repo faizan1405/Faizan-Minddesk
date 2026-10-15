@@ -21,6 +21,13 @@ import {
   ScheduledTaskBlock,
 } from "./types";
 import {
+  PlannerCategory,
+  PlannerRoutine,
+  PlannerRoutineException,
+  FocusSession,
+  DEFAULT_PLANNER_CATEGORIES,
+} from "@/features/planner/types";
+import {
   loadMindDeskStore,
   saveMindDeskStore,
   exportCalendarBackup,
@@ -119,6 +126,25 @@ export interface CalendarContextType {
   updateSettings: (settings: Partial<CalendarSettings>) => void;
   exportBackup: () => void;
   restoreBackup: (json: string) => void;
+
+  // Planner Categories & Routines
+  plannerCategories: PlannerCategory[];
+  setPlannerCategories: (categories: PlannerCategory[]) => void;
+  addPlannerCategory: (category: Omit<PlannerCategory, "id">) => PlannerCategory;
+  updatePlannerCategory: (id: string, updates: Partial<PlannerCategory>) => void;
+  deletePlannerCategory: (id: string, reassignCategoryId?: string) => void;
+
+  plannerRoutines: PlannerRoutine[];
+  addPlannerRoutine: (routine: Omit<PlannerRoutine, "id" | "createdAt" | "updatedAt">) => PlannerRoutine;
+  updatePlannerRoutine: (id: string, updates: Partial<PlannerRoutine>) => void;
+  deletePlannerRoutine: (id: string) => void;
+
+  plannerExceptions: PlannerRoutineException[];
+  addPlannerException: (exception: Omit<PlannerRoutineException, "id" | "createdAt">) => PlannerRoutineException;
+  deletePlannerException: (id: string) => void;
+
+  focusSessions: FocusSession[];
+  addFocusSession: (session: Omit<FocusSession, "id">) => FocusSession;
 }
 
 const CalendarContext = createContext<CalendarContextType | null>(null);
@@ -237,6 +263,37 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
     return localStore.settings || seed.settings;
   }, [deskData?.calendarSettings, localStore.settings, seed.settings]);
 
+  const plannerCategories: PlannerCategory[] = useMemo(() => {
+    if (deskData?.plannerCategories && Array.isArray(deskData.plannerCategories) && deskData.plannerCategories.length > 0) {
+      return deskData.plannerCategories;
+    }
+    if (localStore.plannerCategories && Array.isArray(localStore.plannerCategories) && localStore.plannerCategories.length > 0) {
+      return localStore.plannerCategories;
+    }
+    return DEFAULT_PLANNER_CATEGORIES;
+  }, [deskData?.plannerCategories, localStore.plannerCategories]);
+
+  const plannerRoutines: PlannerRoutine[] = useMemo(() => {
+    if (deskData?.plannerRoutines && Array.isArray(deskData.plannerRoutines)) {
+      return deskData.plannerRoutines;
+    }
+    return localStore.plannerRoutines || [];
+  }, [deskData?.plannerRoutines, localStore.plannerRoutines]);
+
+  const plannerExceptions: PlannerRoutineException[] = useMemo(() => {
+    if (deskData?.plannerExceptions && Array.isArray(deskData.plannerExceptions)) {
+      return deskData.plannerExceptions;
+    }
+    return localStore.plannerExceptions || [];
+  }, [deskData?.plannerExceptions, localStore.plannerExceptions]);
+
+  const focusSessions: FocusSession[] = useMemo(() => {
+    if (deskData?.focusSessions && Array.isArray(deskData.focusSessions)) {
+      return deskData.focusSessions;
+    }
+    return localStore.focusSessions || [];
+  }, [deskData?.focusSessions, localStore.focusSessions]);
+
   const currentDateStr = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
   const currentPlan = dailyPlans[currentDateStr];
 
@@ -296,6 +353,10 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
             maps: current.maps,
             taskLists: current.taskLists,
             theme: current.theme,
+            plannerCategories: current.plannerCategories ?? plannerCategories,
+            plannerRoutines: current.plannerRoutines ?? plannerRoutines,
+            plannerExceptions: current.plannerExceptions ?? plannerExceptions,
+            focusSessions: current.focusSessions ?? focusSessions,
           };
           const next = updater(currentStore);
           // Sync to localStorage
@@ -322,6 +383,10 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
             })),
             dailyPlans: next.dailyPlans || {},
             calendarSettings: next.settings,
+            plannerCategories: next.plannerCategories,
+            plannerRoutines: next.plannerRoutines,
+            plannerExceptions: next.plannerExceptions,
+            focusSessions: next.focusSessions,
           };
         });
       } else {
@@ -332,7 +397,20 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [updateDeskData, events, categories, exceptions, scheduledBlocks, tasks, dailyPlans, settings]
+    [
+      updateDeskData,
+      events,
+      categories,
+      exceptions,
+      scheduledBlocks,
+      tasks,
+      dailyPlans,
+      settings,
+      plannerCategories,
+      plannerRoutines,
+      plannerExceptions,
+      focusSessions,
+    ]
   );
 
   // Navigation handlers
@@ -985,6 +1063,142 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
     setLocalStore(restored);
   }, []);
 
+  const setPlannerCategories = useCallback(
+    (cats: PlannerCategory[]) => {
+      updateAndPersist((prev) => ({
+        ...prev,
+        plannerCategories: cats,
+      }));
+    },
+    [updateAndPersist]
+  );
+
+  const addPlannerCategory = useCallback(
+    (cat: Omit<PlannerCategory, "id">): PlannerCategory => {
+      const newCat: PlannerCategory = {
+        ...cat,
+        id: `cat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      };
+      updateAndPersist((prev) => ({
+        ...prev,
+        plannerCategories: [...(prev.plannerCategories || DEFAULT_PLANNER_CATEGORIES), newCat],
+      }));
+      return newCat;
+    },
+    [updateAndPersist]
+  );
+
+  const updatePlannerCategory = useCallback(
+    (id: string, updates: Partial<PlannerCategory>) => {
+      updateAndPersist((prev) => ({
+        ...prev,
+        plannerCategories: (prev.plannerCategories || DEFAULT_PLANNER_CATEGORIES).map((c) =>
+          c.id === id ? { ...c, ...updates } : c
+        ),
+      }));
+    },
+    [updateAndPersist]
+  );
+
+  const deletePlannerCategory = useCallback(
+    (id: string, reassignCategoryId?: string) => {
+      const fallbackId = reassignCategoryId || "cat-work-focus";
+      updateAndPersist((prev) => ({
+        ...prev,
+        plannerCategories: (prev.plannerCategories || DEFAULT_PLANNER_CATEGORIES).filter((c) => c.id !== id),
+        scheduledBlocks: (prev.scheduledBlocks || []).map((b) =>
+          b.categoryId === id ? { ...b, categoryId: fallbackId } : b
+        ),
+        plannerRoutines: (prev.plannerRoutines || []).map((r) =>
+          r.categoryId === id ? { ...r, categoryId: fallbackId } : r
+        ),
+      }));
+    },
+    [updateAndPersist]
+  );
+
+  const addPlannerRoutine = useCallback(
+    (routine: Omit<PlannerRoutine, "id" | "createdAt" | "updatedAt">): PlannerRoutine => {
+      const now = new Date().toISOString();
+      const newRoutine: PlannerRoutine = {
+        ...routine,
+        id: `routine-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        createdAt: now,
+        updatedAt: now,
+      };
+      updateAndPersist((prev) => ({
+        ...prev,
+        plannerRoutines: [...(prev.plannerRoutines || []), newRoutine],
+      }));
+      return newRoutine;
+    },
+    [updateAndPersist]
+  );
+
+  const updatePlannerRoutine = useCallback(
+    (id: string, updates: Partial<PlannerRoutine>) => {
+      updateAndPersist((prev) => ({
+        ...prev,
+        plannerRoutines: (prev.plannerRoutines || []).map((r) =>
+          r.id === id ? { ...r, ...updates, updatedAt: new Date().toISOString() } : r
+        ),
+      }));
+    },
+    [updateAndPersist]
+  );
+
+  const deletePlannerRoutine = useCallback(
+    (id: string) => {
+      updateAndPersist((prev) => ({
+        ...prev,
+        plannerRoutines: (prev.plannerRoutines || []).filter((r) => r.id !== id),
+        plannerExceptions: (prev.plannerExceptions || []).filter((e) => e.routineId !== id),
+      }));
+    },
+    [updateAndPersist]
+  );
+
+  const addPlannerException = useCallback(
+    (exception: Omit<PlannerRoutineException, "id" | "createdAt">): PlannerRoutineException => {
+      const newEx: PlannerRoutineException = {
+        ...exception,
+        id: `ex-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        createdAt: new Date().toISOString(),
+      };
+      updateAndPersist((prev) => ({
+        ...prev,
+        plannerExceptions: [...(prev.plannerExceptions || []), newEx],
+      }));
+      return newEx;
+    },
+    [updateAndPersist]
+  );
+
+  const deletePlannerException = useCallback(
+    (id: string) => {
+      updateAndPersist((prev) => ({
+        ...prev,
+        plannerExceptions: (prev.plannerExceptions || []).filter((e) => e.id !== id),
+      }));
+    },
+    [updateAndPersist]
+  );
+
+  const addFocusSession = useCallback(
+    (session: Omit<FocusSession, "id">): FocusSession => {
+      const newSession: FocusSession = {
+        ...session,
+        id: `focus-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      };
+      updateAndPersist((prev) => ({
+        ...prev,
+        focusSessions: [...(prev.focusSessions || []), newSession],
+      }));
+      return newSession;
+    },
+    [updateAndPersist]
+  );
+
   const value: CalendarContextType = useMemo(
     () => ({
       isLoaded,
@@ -1034,6 +1248,20 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
       updateSettings,
       exportBackup,
       restoreBackup,
+      plannerCategories,
+      setPlannerCategories,
+      addPlannerCategory,
+      updatePlannerCategory,
+      deletePlannerCategory,
+      plannerRoutines,
+      addPlannerRoutine,
+      updatePlannerRoutine,
+      deletePlannerRoutine,
+      plannerExceptions,
+      addPlannerException,
+      deletePlannerException,
+      focusSessions,
+      addFocusSession,
     }),
     [
       isLoaded,
@@ -1081,6 +1309,20 @@ function CalendarProviderInner({ children }: { children: React.ReactNode }) {
       goToToday,
       goToPrevious,
       goToNext,
+      plannerCategories,
+      setPlannerCategories,
+      addPlannerCategory,
+      updatePlannerCategory,
+      deletePlannerCategory,
+      plannerRoutines,
+      addPlannerRoutine,
+      updatePlannerRoutine,
+      deletePlannerRoutine,
+      plannerExceptions,
+      addPlannerException,
+      deletePlannerException,
+      focusSessions,
+      addFocusSession,
     ]
   );
 

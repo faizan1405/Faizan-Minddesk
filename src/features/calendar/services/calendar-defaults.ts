@@ -110,5 +110,16 @@ export function getInitialSeedData(): MindDeskStoreData {
     routineSessions: [],
     notifications: [],
     notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
+    plannerCategories: [
+      { id: "cat-work-focus", name: "Work & Focus", color: "#4f46e5", isDefault: true },
+      { id: "cat-health", name: "Health", color: "#10b981", isDefault: true },
+      { id: "cat-personal", name: "Personal", color: "#8b5cf6", isDefault: true },
+      { id: "cat-breaks", name: "Breaks", color: "#f59e0b", isDefault: true },
+      { id: "cat-sleep", name: "Sleep", color: "#64748b", isDefault: true },
+      { id: "cat-general", name: "General", color: "#6b7280", isDefault: true },
+    ],
+    plannerRoutines: [],
+    plannerExceptions: [],
+    focusSessions: [],
   };
 }

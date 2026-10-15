@@ -87,6 +87,13 @@ export type TimeBlockType =
   | "habit"
   | "routine";
 
+export type TimeBlockStatus =
+  | "suggested"
+  | "confirmed"
+  | "active"
+  | "completed"
+  | "skipped";
+
 export interface ScheduledTaskBlock {
   id: string;
   taskId?: string;
@@ -99,13 +106,20 @@ export interface ScheduledTaskBlock {
   endTime: string; // HH:mm
   durationMinutes: number;
   color?: string;
+  categoryId?: string;
   completed: boolean;
+  status?: TimeBlockStatus;
   createdAt: string;
   updatedAt?: string;
   description?: string;
   blockType?: TimeBlockType;
   recurrence?: RecurrenceRule;
   recurringSeriesId?: string;
+  isRecurringInstance?: boolean;
+  isFlexibleSuggestion?: boolean;
+  flexibleRoutineId?: string;
+  unplacedReason?: string;
+  actualFocusedMinutes?: number;
 }
 
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
@@ -172,4 +186,8 @@ export interface MindDeskStoreData {
   routineSessions?: RoutineSession[];
   notifications?: NotificationRecord[];
   notificationPreferences?: NotificationPreferences;
+  plannerCategories?: import("@/features/planner/types").PlannerCategory[];
+  plannerRoutines?: import("@/features/planner/types").PlannerRoutine[];
+  plannerExceptions?: import("@/features/planner/types").PlannerRoutineException[];
+  focusSessions?: import("@/features/planner/types").FocusSession[];
 }

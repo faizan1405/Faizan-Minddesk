@@ -72,6 +72,18 @@ export function loadMindDeskStore(): MindDeskStoreData {
         typeof parsed.notificationPreferences === "object" && parsed.notificationPreferences !== null
           ? { ...initial.notificationPreferences, ...parsed.notificationPreferences }
           : initial.notificationPreferences,
+      plannerCategories: Array.isArray(parsed.plannerCategories) && parsed.plannerCategories.length > 0
+        ? parsed.plannerCategories
+        : (initial.plannerCategories || []),
+      plannerRoutines: Array.isArray(parsed.plannerRoutines)
+        ? parsed.plannerRoutines
+        : (initial.plannerRoutines || []),
+      plannerExceptions: Array.isArray(parsed.plannerExceptions)
+        ? parsed.plannerExceptions
+        : (initial.plannerExceptions || []),
+      focusSessions: Array.isArray(parsed.focusSessions)
+        ? parsed.focusSessions
+        : (initial.focusSessions || []),
     };
 
     return sanitized;
@@ -122,6 +134,10 @@ export function saveMindDeskStore(data: MindDeskStoreData): void {
       routineSessions: data.routineSessions ?? existingRaw.routineSessions,
       notifications: data.notifications ?? existingRaw.notifications,
       notificationPreferences: data.notificationPreferences ?? existingRaw.notificationPreferences,
+      plannerCategories: data.plannerCategories ?? existingRaw.plannerCategories,
+      plannerRoutines: data.plannerRoutines ?? existingRaw.plannerRoutines,
+      plannerExceptions: data.plannerExceptions ?? existingRaw.plannerExceptions,
+      focusSessions: data.focusSessions ?? existingRaw.focusSessions,
     };
 
     const json = JSON.stringify(merged);
@@ -199,6 +215,10 @@ export function importCalendarBackup(jsonString: string): MindDeskStoreData {
     routineSessions: Array.isArray(parsed.routineSessions) ? parsed.routineSessions : initial.routineSessions,
     notifications: Array.isArray(parsed.notifications) ? parsed.notifications : initial.notifications,
     notificationPreferences: parsed.notificationPreferences || initial.notificationPreferences,
+    plannerCategories: Array.isArray(parsed.plannerCategories) ? parsed.plannerCategories : initial.plannerCategories,
+    plannerRoutines: Array.isArray(parsed.plannerRoutines) ? parsed.plannerRoutines : initial.plannerRoutines,
+    plannerExceptions: Array.isArray(parsed.plannerExceptions) ? parsed.plannerExceptions : initial.plannerExceptions,
+    focusSessions: Array.isArray(parsed.focusSessions) ? parsed.focusSessions : initial.focusSessions,
   };
   saveMindDeskStore(restored);
   return restored;
