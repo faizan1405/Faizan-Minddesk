@@ -8,6 +8,7 @@ import {
 import type { VerifiedActor } from "@/lib/security/authorization";
 import type { DeskData, TaskItem, TaskList } from "@/features/minddesk/types";
 import type { ProfilePreferencesJson } from "@/features/auth/types";
+import { runHabitsStagingVerification } from "../../../../scripts/verify-habits-staging-mariadb";
 
 // ============================================================================
 // Isolated In-Memory Relational MySQL Simulator for Non-Destructive Verification
@@ -17,6 +18,7 @@ import type { ProfilePreferencesJson } from "@/features/auth/types";
 // 3. Locking reads and transactions ($executeRaw, $transaction)
 // ============================================================================
 function createIsolatedTestDatabase(): PrismaClient {
+  const users = new Map<string, Record<string, unknown>>();
   const profiles = new Map<string, Record<string, unknown>>();
   const workspaces = new Map<string, Record<string, unknown>>();
   const workspaceMembers = new Map<string, Record<string, unknown>>();
@@ -175,6 +177,7 @@ function createIsolatedTestDatabase(): PrismaClient {
   });
 
   const mock = {
+    user: makeModel(users),
     profile: makeModel(profiles),
     workspace: makeModel(workspaces),
     workspaceMember: makeModel(workspaceMembers),
@@ -750,5 +753,14 @@ describe("MindDesk Milestone 1: Non-Destructive Isolated Database Verification",
     expect(fetchedNote?.icon).toBe("📘");
     expect(fetchedNote?.starred).toBe(true);
     expect(fetchedNote?.coverImage).toBe("https://example.com/cover.jpg");
+  });
+
+  // ==========================================================================
+  // CHECK 7: Habits & Routines Server Persistence, Weekly Flexibility, Pause/Resume & Anti-Resurrection Tombstones
+  // ==========================================================================
+  it("CHECK 7: Habits & Routines relational persistence, flexible targets, and anti-resurrection tombstones", async () => {
+    const { allPassed, results } = await runHabitsStagingVerification(db);
+    expect(allPassed).toBe(true);
+    expect(results.length).toBeGreaterThanOrEqual(9);
   });
 });

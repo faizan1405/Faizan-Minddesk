@@ -4,6 +4,8 @@ import {
   calculateHabitStreak,
   buildHeatmapData,
   toDateString,
+  getHabitOccurrenceStatus,
+  getWeeklyHabitProgress,
 } from "../services/habit-scheduler";
 import type { Habit, HabitCompletion } from "../types";
 
@@ -239,6 +241,178 @@ describe("Habit Scheduler & Streaks (Phase 7)", () => {
     it("handles both Date instances and ISO strings", () => {
       expect(toDateString("2026-10-15")).toBe("2026-10-15");
       expect(toDateString(new Date(2026, 9, 15))).toBe("2026-10-15");
+    });
+  });
+
+  describe("Flexible Weekly Frequency (times_per_week)", () => {
+    const weeklyHabit: Habit = {
+      ...baseHabit,
+      id: "weekly-1",
+      name: "Exercise 3x Week",
+      schedule: {
+        frequency: "times_per_week",
+        timesPerWeek: 3,
+      },
+      startDate: "2026-10-05", // Monday
+    };
+
+    it("evaluates weekly progress correctly (e.g. 2 of 3 completed)", () => {
+      const completions: HabitCompletion[] = [
+        { id: "c1", habitId: "weekly-1", date: "2026-10-05", completed: true }, // Mon
+        { id: "c2", habitId: "weekly-1", date: "2026-10-07", completed: true }, // Wed
+      ];
+
+      const progress = getWeeklyHabitProgress(weeklyHabit, "2026-10-08", completions);
+      expect(progress.target).toBe(3);
+      expect(progress.completedCount).toBe(2);
+      expect(progress.isGoalMet).toBe(false);
+      expect(progress.weekStart).toBe("2026-10-05");
+      expect(progress.weekEnd).toBe("2026-10-11");
+    });
+
+    it("counts 3 of 3 weekly completions as 100% target achievement without treating remaining days as failures", () => {
+      const completions: HabitCompletion[] = [
+        { id: "c1", habitId: "weekly-1", date: "2026-10-05", completed: true }, // Mon
+        { id: "c2", habitId: "weekly-1", date: "2026-10-07", completed: true }, // Wed
+        { id: "c3", habitId: "weekly-1", date: "2026-10-09", completed: true }, // Fri
+      ];
+
+      // End of the week (Sunday 2026-10-11)
+      const stats = calculateHabitStreak(weeklyHabit, completions, "2026-10-11");
+      expect(stats.currentStreak).toBe(1);
+      expect(stats.longestStreak).toBe(1);
+      expect(stats.totalCompletions).toBe(3);
+      expect(stats.completionRate).toBe(100);
+    });
+
+    it("maintains streak across consecutive completed weeks", () => {
+      const completions: HabitCompletion[] = [
+        // Week 1: 3 completions (2026-10-05 to 2026-10-11)
+        { id: "c1", habitId: "weekly-1", date: "2026-10-05", completed: true },
+        { id: "c2", habitId: "weekly-1", date: "2026-10-07", completed: true },
+        { id: "c3", habitId: "weekly-1", date: "2026-10-09", completed: true },
+        // Week 2: 3 completions (2026-10-12 to 2026-10-18)
+        { id: "c4", habitId: "weekly-1", date: "2026-10-13", completed: true },
+        { id: "c5", habitId: "weekly-1", date: "2026-10-15", completed: true },
+        { id: "c6", habitId: "weekly-1", date: "2026-10-17", completed: true },
+      ];
+
+      const stats = calculateHabitStreak(weeklyHabit, completions, "2026-10-18");
+      expect(stats.currentStreak).toBe(2);
+      expect(stats.longestStreak).toBe(2);
+      expect(stats.totalCompletions).toBe(6);
+      expect(stats.completionRate).toBe(100);
+    });
+
+    it("does not count an incomplete current week as missed failures", () => {
+      const completions: HabitCompletion[] = [
+        // Week 1 completed
+        { id: "c1", habitId: "weekly-1", date: "2026-10-05", completed: true },
+        { id: "c2", habitId: "weekly-1", date: "2026-10-07", completed: true },
+        { id: "c3", habitId: "weekly-1", date: "2026-10-09", completed: true },
+        // Week 2: only 1 completed so far, today is Tuesday 2026-10-13
+        { id: "c4", habitId: "weekly-1", date: "2026-10-13", completed: true },
+      ];
+
+      const stats = calculateHabitStreak(weeklyHabit, completions, "2026-10-13");
+      // Current week is in progress, so streak from week 1 is preserved!
+      expect(stats.currentStreak).toBe(1);
+    });
+  });
+
+  describe("Paused Habits & Historical Integrity", () => {
+    it("preserves schedule for dates before pausedAt date", () => {
+      const pausedHabit: Habit = {
+        ...baseHabit,
+        isPaused: true,
+        pausedAt: "2026-10-05",
+      };
+
+      // Dates before pause are still scheduled
+      expect(isHabitScheduledOnDate(pausedHabit, "2026-10-01")).toBe(true);
+      expect(isHabitScheduledOnDate(pausedHabit, "2026-10-04")).toBe(true);
+      // Dates on or after pause are NOT scheduled
+      expect(isHabitScheduledOnDate(pausedHabit, "2026-10-05")).toBe(false);
+      expect(isHabitScheduledOnDate(pausedHabit, "2026-10-06")).toBe(false);
+    });
+
+    it("preserves historical completions and streak stats after being paused", () => {
+      const pausedHabit: Habit = {
+        ...baseHabit,
+        isPaused: true,
+        pausedAt: "2026-10-04",
+      };
+
+      const completions: HabitCompletion[] = [
+        { id: "c1", habitId: "habit-1", date: "2026-10-01", completed: true },
+        { id: "c2", habitId: "habit-1", date: "2026-10-02", completed: true },
+        { id: "c3", habitId: "habit-1", date: "2026-10-03", completed: true },
+      ];
+
+      // On 2026-10-06 (while paused)
+      const stats = calculateHabitStreak(pausedHabit, completions, "2026-10-06");
+      expect(stats.totalCompletions).toBe(3);
+      expect(stats.longestStreak).toBe(3);
+      expect(stats.totalScheduled).toBe(3); // only Oct 1, 2, 3 were scheduled
+      expect(stats.completionRate).toBe(100);
+    });
+
+    it("supports pause periods with resume date correctly", () => {
+      const resumedHabit: Habit = {
+        ...baseHabit,
+        isPaused: false,
+        pausePeriods: [
+          { pausedAt: "2026-10-03", resumedAt: "2026-10-05" },
+        ],
+      };
+
+      expect(isHabitScheduledOnDate(resumedHabit, "2026-10-02")).toBe(true); // before pause
+      expect(isHabitScheduledOnDate(resumedHabit, "2026-10-03")).toBe(false); // paused
+      expect(isHabitScheduledOnDate(resumedHabit, "2026-10-04")).toBe(false); // paused
+      expect(isHabitScheduledOnDate(resumedHabit, "2026-10-05")).toBe(true); // resumed
+    });
+  });
+
+  describe("5 Distinct Occurrence States (getHabitOccurrenceStatus)", () => {
+    const durationHabit: Habit = {
+      ...baseHabit,
+      type: "duration",
+      target: 30,
+      unit: "mins",
+    };
+
+    it("identifies completed state when target is met", () => {
+      const completions: HabitCompletion[] = [
+        { id: "c1", habitId: "habit-1", date: "2026-10-01", completed: true, currentValue: 30 },
+      ];
+      expect(getHabitOccurrenceStatus(durationHabit, "2026-10-01", completions, "2026-10-01")).toBe("completed");
+    });
+
+    it("identifies partially_completed state when progress logged is below target", () => {
+      const completions: HabitCompletion[] = [
+        { id: "c1", habitId: "habit-1", date: "2026-10-01", completed: false, currentValue: 15 },
+      ];
+      expect(getHabitOccurrenceStatus(durationHabit, "2026-10-01", completions, "2026-10-01")).toBe("partially_completed");
+    });
+
+    it("identifies explicitly skipped state", () => {
+      const completions: HabitCompletion[] = [
+        { id: "c1", habitId: "habit-1", date: "2026-10-01", completed: false, skipped: true },
+      ];
+      expect(getHabitOccurrenceStatus(durationHabit, "2026-10-01", completions, "2026-10-01")).toBe("skipped");
+    });
+
+    it("identifies missed state for past scheduled days without completion or skip", () => {
+      expect(getHabitOccurrenceStatus(durationHabit, "2026-10-01", [], "2026-10-05")).toBe("missed");
+    });
+
+    it("identifies pending state for today and future scheduled dates (never missed)", () => {
+      expect(getHabitOccurrenceStatus(durationHabit, "2026-10-05", [], "2026-10-05")).toBe("pending");
+      expect(getHabitOccurrenceStatus(durationHabit, "2026-10-06", [], "2026-10-05")).toBe("pending");
+    });
+
+    it("identifies unscheduled state for non-scheduled dates", () => {
+      expect(getHabitOccurrenceStatus(durationHabit, "2026-09-20", [], "2026-10-05")).toBe("unscheduled");
     });
   });
 });

@@ -55,15 +55,21 @@ export function RoutineExecutionModal({
   // Sound chime ref
   const audioContextRef = useRef<AudioContext | null>(null);
 
-  // Reset timer when step index changes
+  // Reset or restore timer when step index changes
   useEffect(() => {
     if (routine) {
       const step = routine.steps[currentStepIdx];
       const initialSecs = (step?.durationMinutes || 5) * 60;
-      setTimerSeconds(initialSecs);
+      const spent = activeSession?.stepCompletions[currentStepIdx]?.durationSeconds || 0;
+      setTimerSeconds(Math.max(0, initialSecs - spent));
       setIsTimerRunning(false);
+
+      const totalElapsed = activeSession?.stepCompletions.reduce(
+        (sum, s) => sum + (s.durationSeconds || 0), 0
+      ) || 0;
+      setElapsedTotalSeconds(totalElapsed);
     }
-  }, [routine, currentStepIdx]);
+  }, [routine, currentStepIdx, activeSession?.id, activeSession?.stepCompletions]);
 
   // Interval timer for active step countdown
   useEffect(() => {
@@ -130,8 +136,10 @@ export function RoutineExecutionModal({
   };
 
   const handleStepComplete = () => {
-    if (activeSession) {
-      updateRoutineSessionStep(activeSession.id, currentStepIdx, true, false, elapsedTotalSeconds);
+    if (activeSession && currentStep) {
+      const stepSecs = (currentStep.durationMinutes || 5) * 60;
+      const stepElapsed = Math.max(0, stepSecs - timerSeconds) || stepSecs;
+      updateRoutineSessionStep(activeSession.id, currentStepIdx, true, false, stepElapsed);
     }
 
     if (currentStepIdx + 1 >= totalSteps) {
@@ -145,7 +153,7 @@ export function RoutineExecutionModal({
 
   const handleStepSkip = () => {
     if (activeSession) {
-      updateRoutineSessionStep(activeSession.id, currentStepIdx, false, true, elapsedTotalSeconds);
+      updateRoutineSessionStep(activeSession.id, currentStepIdx, false, true, 0);
     }
 
     if (currentStepIdx + 1 >= totalSteps) {
@@ -157,18 +165,43 @@ export function RoutineExecutionModal({
   };
 
   const handlePrevious = () => {
-    if (currentStepIdx > 0 && activeSession) {
-      updateRoutineSessionStep(activeSession.id, currentStepIdx - 1, false, false, elapsedTotalSeconds);
+    if (currentStepIdx > 0 && activeSession && currentStep) {
+      const stepSecs = (currentStep.durationMinutes || 5) * 60;
+      const stepElapsed = Math.max(0, stepSecs - timerSeconds);
+      updateRoutineSessionStep(
+        activeSession.id,
+        currentStepIdx,
+        false,
+        false,
+        stepElapsed,
+        currentStepIdx - 1
+      );
     }
   };
 
   const handleResetTimer = () => {
     setIsTimerRunning(false);
-    setTimerSeconds((currentStep?.durationMinutes || 5) * 60);
+    if (currentStep) {
+      setTimerSeconds((currentStep.durationMinutes || 5) * 60);
+      if (activeSession) {
+        updateRoutineSessionStep(activeSession.id, currentStepIdx, false, false, 0, currentStepIdx);
+      }
+    }
   };
 
   const handleExitAndSave = () => {
-    // Current step progress is already saved via updateRoutineSessionStep
+    if (activeSession && currentStep && !isFinished) {
+      const stepSecs = (currentStep.durationMinutes || 5) * 60;
+      const stepElapsed = Math.max(0, stepSecs - timerSeconds);
+      updateRoutineSessionStep(
+        activeSession.id,
+        currentStepIdx,
+        false,
+        false,
+        stepElapsed,
+        currentStepIdx
+      );
+    }
     onClose();
   };
 
@@ -207,7 +240,7 @@ export function RoutineExecutionModal({
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleExitAndSave}
               className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
             >
               <X size={18} />

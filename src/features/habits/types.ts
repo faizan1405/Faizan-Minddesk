@@ -31,10 +31,20 @@ export interface Habit {
   preferredTime?: string; // HH:mm e.g. "08:00"
   reminderMinutes?: number; // 0, 5, 10, 15, 30
   isPaused: boolean;
+  pausedAt?: string; // YYYY-MM-DD when habit was paused
+  pausePeriods?: { pausedAt: string; resumedAt?: string }[];
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+export type HabitOccurrenceStatus =
+  | "completed"
+  | "partially_completed"
+  | "pending"
+  | "missed"
+  | "skipped"
+  | "unscheduled";
 
 export interface HabitCompletion {
   id: string;

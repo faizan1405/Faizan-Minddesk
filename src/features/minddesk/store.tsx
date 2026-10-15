@@ -13,6 +13,7 @@ import { useTheme } from "next-themes";
 
 import { initialDeskData, initialTaskLists } from "./seed";
 import type { DeskData, NoteItem, TaskItem, TaskList } from "./types";
+import type { Habit, Routine } from "@/features/habits/types";
 import { sanitizeMapIdentifiers } from "./utils/mind-map-utils";
 import { useUIStore } from "@/stores/ui-store";
 import type { AuthUserSummary } from "@/types/domain";
@@ -33,6 +34,8 @@ interface PendingTombstonesData {
   maps?: string[];
   taskLists?: string[];
   projects?: string[];
+  habits?: string[];
+  routines?: string[];
 }
 
 function loadPendingTombstones(userId: string): PendingTombstonesData {
@@ -53,6 +56,8 @@ function savePendingTombstones(
     maps: Set<string>;
     taskLists: Set<string>;
     projects: Set<string>;
+    habits: Set<string>;
+    routines: Set<string>;
   }
 ) {
   if (typeof window === "undefined" || !userId) return;
@@ -63,6 +68,8 @@ function savePendingTombstones(
       maps: Array.from(tombstones.maps),
       taskLists: Array.from(tombstones.taskLists),
       projects: Array.from(tombstones.projects),
+      habits: Array.from(tombstones.habits),
+      routines: Array.from(tombstones.routines),
     };
     window.localStorage.setItem(getPendingTombstonesKey(userId), JSON.stringify(payload));
   } catch {
@@ -81,7 +88,10 @@ export interface DeskContextValue {
   syncLocalDataToAccount?: () => Promise<{ success: boolean; error?: string }>;
   refetchFromServer: () => Promise<void>;
   persistImmediately: () => Promise<void>;
-  registerDeletedId: (type: "task" | "note" | "map" | "taskList" | "project", id: string) => void;
+  registerDeletedId: (
+    type: "task" | "note" | "map" | "taskList" | "project" | "habit" | "routine",
+    id: string
+  ) => void;
   retryInitialLoad: () => void;
 }
 
@@ -105,6 +115,8 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
   const deletedMapIdsRef = useRef<Set<string>>(new Set(initialTombstones.maps || []));
   const deletedTaskListIdsRef = useRef<Set<string>>(new Set(initialTombstones.taskLists || []));
   const deletedProjectIdsRef = useRef<Set<string>>(new Set(initialTombstones.projects || []));
+  const deletedHabitIdsRef = useRef<Set<string>>(new Set(initialTombstones.habits || []));
+  const deletedRoutineIdsRef = useRef<Set<string>>(new Set(initialTombstones.routines || []));
 
   // If user is authenticated, start in authoritative loading state to prevent content flashing
   const [data, setData] = useState<DeskData>(() => {
@@ -157,6 +169,8 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
         deletedMapIdsRef.current = new Set(loaded.maps || []);
         deletedTaskListIdsRef.current = new Set(loaded.taskLists || []);
         deletedProjectIdsRef.current = new Set(loaded.projects || []);
+        deletedHabitIdsRef.current = new Set(loaded.habits || []);
+        deletedRoutineIdsRef.current = new Set(loaded.routines || []);
         setData(initialDeskData);
         latestDataRef.current = initialDeskData;
         setIsLoading(true);
@@ -184,7 +198,9 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
         deletedNoteIdsRef.current.size > 0 ||
         deletedMapIdsRef.current.size > 0 ||
         deletedTaskListIdsRef.current.size > 0 ||
-        deletedProjectIdsRef.current.size > 0;
+        deletedProjectIdsRef.current.size > 0 ||
+        deletedHabitIdsRef.current.size > 0 ||
+        deletedRoutineIdsRef.current.size > 0;
 
       if (currentJson === lastSavedJsonRef.current && !hasDeletions) {
         useUIStore.getState().setSaveStatus("saved");
@@ -199,6 +215,8 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
       const deletedMapIds = Array.from(deletedMapIdsRef.current);
       const deletedTaskListIds = Array.from(deletedTaskListIdsRef.current);
       const deletedProjectIds = Array.from(deletedProjectIdsRef.current);
+      const deletedHabitIds = Array.from(deletedHabitIdsRef.current);
+      const deletedRoutineIds = Array.from(deletedRoutineIdsRef.current);
 
       try {
         const res = await fetch("/api/minddesk/sync", {
@@ -211,6 +229,8 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
             deletedMapIds,
             deletedTaskListIds,
             deletedProjectIds,
+            deletedHabitIds,
+            deletedRoutineIds,
             clientPreferencesVersion: dataToSave.preferencesVersion,
           }),
         });
@@ -233,6 +253,8 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
           deletedMapIds.forEach((id) => deletedMapIdsRef.current.delete(id));
           deletedTaskListIds.forEach((id) => deletedTaskListIdsRef.current.delete(id));
           deletedProjectIds.forEach((id) => deletedProjectIdsRef.current.delete(id));
+          deletedHabitIds.forEach((id) => deletedHabitIdsRef.current.delete(id));
+          deletedRoutineIds.forEach((id) => deletedRoutineIdsRef.current.delete(id));
 
           if (user?.id) {
             savePendingTombstones(user.id, {
@@ -241,6 +263,8 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
               maps: deletedMapIdsRef.current,
               taskLists: deletedTaskListIdsRef.current,
               projects: deletedProjectIdsRef.current,
+              habits: deletedHabitIdsRef.current,
+              routines: deletedRoutineIdsRef.current,
             });
           }
 
@@ -301,7 +325,9 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
       deletedTaskIdsRef.current.size > 0 ||
       deletedMapIdsRef.current.size > 0 ||
       deletedTaskListIdsRef.current.size > 0 ||
-      deletedProjectIdsRef.current.size > 0;
+      deletedProjectIdsRef.current.size > 0 ||
+      deletedHabitIdsRef.current.size > 0 ||
+      deletedRoutineIdsRef.current.size > 0;
 
     if (isUserDirtyRef.current || hasPendingDeletions) {
       isUserDirtyRef.current = false;
@@ -311,12 +337,17 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
 
   // Register deleted item ID for MySQL deletion
   const registerDeletedId = useCallback(
-    (type: "task" | "note" | "map" | "taskList" | "project", id: string) => {
+    (
+      type: "task" | "note" | "map" | "taskList" | "project" | "habit" | "routine",
+      id: string
+    ) => {
       if (type === "task") deletedTaskIdsRef.current.add(id);
       else if (type === "note") deletedNoteIdsRef.current.add(id);
       else if (type === "map") deletedMapIdsRef.current.add(id);
       else if (type === "taskList") deletedTaskListIdsRef.current.add(id);
       else if (type === "project") deletedProjectIdsRef.current.add(id);
+      else if (type === "habit") deletedHabitIdsRef.current.add(id);
+      else if (type === "routine") deletedRoutineIdsRef.current.add(id);
       isUserDirtyRef.current = true;
 
       const targetUserId = user?.id || "guest";
@@ -326,6 +357,8 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
         maps: deletedMapIdsRef.current,
         taskLists: deletedTaskListIdsRef.current,
         projects: deletedProjectIdsRef.current,
+        habits: deletedHabitIdsRef.current,
+        routines: deletedRoutineIdsRef.current,
       });
     },
     [user?.id]
@@ -348,6 +381,12 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
               ...parsed,
               notes: (parsed.notes || []).filter(
                 (n: NoteItem) => !deletedNoteIdsRef.current.has(n.id)
+              ),
+              habits: (parsed.habits || []).filter(
+                (h: Habit) => !deletedHabitIdsRef.current.has(h.id)
+              ),
+              routines: (parsed.routines || []).filter(
+                (r: Routine) => !deletedRoutineIdsRef.current.has(r.id)
               ),
             };
             const migrated = migrateDeskData(sanitized);
@@ -408,6 +447,12 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
           taskLists: (rawServerData.taskLists || []).filter(
             (l) => !deletedTaskListIdsRef.current.has(l.id)
           ),
+          habits: (rawServerData.habits || []).filter(
+            (h) => !deletedHabitIdsRef.current.has(h.id)
+          ),
+          routines: (rawServerData.routines || []).filter(
+            (r) => !deletedRoutineIdsRef.current.has(r.id)
+          ),
         };
         const migrated = migrateDeskData(sanitizedServerData);
 
@@ -428,7 +473,9 @@ export function MindDeskProvider({ children, user, initialData }: MindDeskProvid
           deletedTaskIdsRef.current.size > 0 ||
           deletedMapIdsRef.current.size > 0 ||
           deletedTaskListIdsRef.current.size > 0 ||
-          deletedProjectIdsRef.current.size > 0;
+          deletedProjectIdsRef.current.size > 0 ||
+          deletedHabitIdsRef.current.size > 0 ||
+          deletedRoutineIdsRef.current.size > 0;
         if (hasPendingDeletions) {
           persistToServer(migrated);
         }

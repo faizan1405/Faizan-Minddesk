@@ -23,6 +23,7 @@ import {
   type VerifiedActor,
 } from "@/lib/security/authorization";
 import type { ProfilePreferencesJson } from "@/features/auth/types";
+import type { HabitProgressLog } from "@/features/habits/types";
 import type { CalendarSettings } from "@/features/calendar/types";
 import type { NotificationPreferences } from "@/features/notifications/types";
 import {
@@ -252,7 +253,7 @@ export async function getWorkspaceDeskData(
       starred: meta.starred ?? false,
       theme: meta.theme || "calm",
       layout: meta.layout || "freeform",
-      nodes: m.nodes.map((node) => {
+      nodes: (m.nodes || []).map((node) => {
         const nodeData =
           typeof node.data === "object" && node.data !== null
             ? (node.data as Record<string, unknown>)
@@ -299,7 +300,7 @@ export async function getWorkspaceDeskData(
           type: "mind",
         };
       }),
-      edges: m.edges.map((edge) => {
+      edges: (m.edges || []).map((edge) => {
         const edgeStyle =
           typeof edge.style === "object" && edge.style !== null
             ? (edge.style as Record<string, unknown>)
@@ -511,19 +512,21 @@ export function reconcileProfilePreferences(
       },
       habits: {
         ...(currentPrefs.habits || {}),
-        ...(incomingData.habits !== undefined
-          ? {
-              habits: incomingData.habits.filter(
-                (h) => !deletedHabitIdsSet.has(h.id)
-              ),
-            }
-          : {}),
-        ...(incomingData.habitCompletions !== undefined
-          ? { habitCompletions: incomingData.habitCompletions }
-          : {}),
-        ...(incomingData.habitProgressLogs !== undefined
-          ? { habitProgressLogs: incomingData.habitProgressLogs }
-          : {}),
+        habits: (
+          incomingData.habits !== undefined
+            ? incomingData.habits
+            : currentPrefs.habits?.habits || []
+        ).filter((h) => !deletedHabitIdsSet.has(h.id)),
+        habitCompletions: (
+          incomingData.habitCompletions !== undefined
+            ? incomingData.habitCompletions
+            : currentPrefs.habits?.habitCompletions || []
+        ).filter((c) => !c.habitId || !deletedHabitIdsSet.has(c.habitId)),
+        habitProgressLogs: (
+          incomingData.habitProgressLogs !== undefined
+            ? incomingData.habitProgressLogs
+            : currentPrefs.habits?.habitProgressLogs || []
+        ).filter((log) => !log.habitId || !deletedHabitIdsSet.has(log.habitId)),
       },
       routines: {
         ...(currentPrefs.routines || {}),
@@ -637,14 +640,20 @@ export function reconcileProfilePreferences(
 
   function reconcileCompletions<
     T extends { id?: string; habitId?: string; date?: string },
-  >(serverItems: T[] | undefined, incomingItems: T[] | undefined): T[] {
+  >(
+    serverItems: T[] | undefined,
+    incomingItems: T[] | undefined,
+    deletedHabitIds: Set<string> = new Set()
+  ): T[] {
     const compMap = new Map<string, T>();
     const getKey = (item: T) => item.id || `${item.habitId}_${item.date}`;
     (serverItems || []).forEach((item) => {
+      if (item.habitId && deletedHabitIds.has(item.habitId)) return;
       const k = getKey(item);
       if (k) compMap.set(k, item);
     });
     (incomingItems || []).forEach((item) => {
+      if (item.habitId && deletedHabitIds.has(item.habitId)) return;
       const k = getKey(item);
       if (k) compMap.set(k, item);
     });
@@ -705,13 +714,16 @@ export function reconcileProfilePreferences(
       ),
       habitCompletions: reconcileCompletions(
         currentPrefs.habits?.habitCompletions,
-        incomingData.habitCompletions
+        incomingData.habitCompletions,
+        deletedHabitIdsSet
       ),
-      habitProgressLogs: reconcileEntities(
-        currentPrefs.habits?.habitProgressLogs,
-        incomingData.habitProgressLogs,
-        new Set()
-      ),
+      habitProgressLogs: (
+        reconcileEntities(
+          currentPrefs.habits?.habitProgressLogs,
+          incomingData.habitProgressLogs,
+          new Set()
+        ) as HabitProgressLog[]
+      ).filter((log) => !log.habitId || !deletedHabitIdsSet.has(log.habitId)),
     },
     routines: {
       ...(currentPrefs.routines || {}),

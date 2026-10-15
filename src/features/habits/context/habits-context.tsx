@@ -44,6 +44,7 @@ export interface HabitsContextType {
   activeRoutines: Routine[];
   routineSessions: RoutineSession[];
   activeRoutineSession: RoutineSession | null;
+  archivedRoutines: Routine[];
 
   // Habit operations
   createHabit: (habit: Omit<Habit, "id" | "createdAt" | "updatedAt">) => Habit;
@@ -53,6 +54,7 @@ export interface HabitsContextType {
   unarchiveHabit: (id: string) => void;
   pauseHabit: (id: string) => void;
   resumeHabit: (id: string) => void;
+  markHabitComplete: (habitId: string, dateStr?: string) => void;
   toggleHabitComplete: (habitId: string, dateStr?: string) => void;
   undoHabitComplete: (habitId: string, dateStr?: string) => void;
   skipHabitOccurrence: (habitId: string, dateStr?: string, reason?: string) => void;
@@ -62,13 +64,16 @@ export interface HabitsContextType {
   createRoutine: (routine: Omit<Routine, "id" | "createdAt" | "updatedAt">) => Routine;
   updateRoutine: (id: string, updates: Partial<Routine>) => void;
   deleteRoutine: (id: string) => void;
+  archiveRoutine: (id: string) => void;
+  unarchiveRoutine: (id: string) => void;
   startRoutineSession: (routineId: string) => RoutineSession;
   updateRoutineSessionStep: (
     sessionId: string,
     stepIndex: number,
     completed: boolean,
     skipped?: boolean,
-    durationSeconds?: number
+    durationSeconds?: number,
+    targetStepIndex?: number
   ) => void;
   completeRoutineSession: (sessionId: string, notes?: string) => void;
   abandonRoutineSession: (sessionId: string) => void;
@@ -203,6 +208,7 @@ export function HabitsProvider({
 
   const activeHabits = useMemo(() => habits.filter((h) => !h.isArchived), [habits]);
   const activeRoutines = useMemo(() => routines.filter((r) => !r.isArchived), [routines]);
+  const archivedRoutines = useMemo(() => routines.filter((r) => r.isArchived), [routines]);
 
   const activeRoutineSession = useMemo(
     () => routineSessions.find((s) => s.status === "in_progress") || null,
@@ -279,22 +285,110 @@ export function HabitsProvider({
   // Delete Habit
   const deleteHabit = useCallback(
     (id: string) => {
+      deskContext?.registerDeletedId?.("habit", id);
       persistHabitsData({
         habits: habits.filter((h) => h.id !== id),
         habitCompletions: habitCompletions.filter((c) => c.habitId !== id),
         habitProgressLogs: habitProgressLogs.filter((p) => p.habitId !== id),
       });
     },
-    [habits, habitCompletions, habitProgressLogs, persistHabitsData]
+    [habits, habitCompletions, habitProgressLogs, persistHabitsData, deskContext]
   );
 
   // Archive / Unarchive
   const archiveHabit = useCallback((id: string) => updateHabit(id, { isArchived: true }), [updateHabit]);
   const unarchiveHabit = useCallback((id: string) => updateHabit(id, { isArchived: false }), [updateHabit]);
 
-  // Pause / Resume
-  const pauseHabit = useCallback((id: string) => updateHabit(id, { isPaused: true }), [updateHabit]);
-  const resumeHabit = useCallback((id: string) => updateHabit(id, { isPaused: false }), [updateHabit]);
+  // Pause / Resume with historical preservation
+  const pauseHabit = useCallback(
+    (id: string) => {
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+      const habit = habits.find((h) => h.id === id);
+      if (!habit) return;
+      const updatedPeriods = [...(habit.pausePeriods || []), { pausedAt: todayStr }];
+      updateHabit(id, {
+        isPaused: true,
+        pausedAt: todayStr,
+        pausePeriods: updatedPeriods,
+      });
+    },
+    [habits, updateHabit]
+  );
+
+  const resumeHabit = useCallback(
+    (id: string) => {
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+      const habit = habits.find((h) => h.id === id);
+      if (!habit) return;
+      const updatedPeriods = habit.pausePeriods ? [...habit.pausePeriods] : [];
+      if (updatedPeriods.length > 0) {
+        const lastIdx = updatedPeriods.length - 1;
+        if (!updatedPeriods[lastIdx].resumedAt) {
+          updatedPeriods[lastIdx] = {
+            ...updatedPeriods[lastIdx],
+            resumedAt: todayStr,
+          };
+        }
+      }
+      updateHabit(id, {
+        isPaused: false,
+        pausedAt: undefined,
+        pausePeriods: updatedPeriods,
+      });
+    },
+    [habits, updateHabit]
+  );
+
+  // Idempotent Mark Habit Complete (never toggles an already completed habit back to false)
+  const markHabitComplete = useCallback(
+    (habitId: string, dateStr: string = format(new Date(), "yyyy-MM-dd")) => {
+      const habit = habits.find((h) => h.id === habitId);
+      if (!habit) return;
+
+      const existingIndex = habitCompletions.findIndex(
+        (c) => c.habitId === habitId && c.date === dateStr
+      );
+
+      const nextCompletions = [...habitCompletions];
+
+      if (existingIndex >= 0) {
+        const existing = nextCompletions[existingIndex];
+        // If already completed, do not alter
+        if (existing.completed) return;
+
+        nextCompletions[existingIndex] = {
+          ...existing,
+          completed: true,
+          skipped: false,
+          currentValue: habit.target || 1,
+          completedAt: new Date().toISOString(),
+        };
+      } else {
+        nextCompletions.push({
+          id: `comp-${habitId}-${dateStr}`,
+          habitId,
+          date: dateStr,
+          completed: true,
+          skipped: false,
+          currentValue: habit.target || 1,
+          targetValue: habit.target || 1,
+          completedAt: new Date().toISOString(),
+        });
+      }
+
+      persistHabitsData({ habitCompletions: nextCompletions });
+
+      if (calendarContext?.scheduledBlocks) {
+        const linkedBlock = calendarContext.scheduledBlocks.find(
+          (b) => b.habitId === habitId && b.date === dateStr
+        );
+        if (linkedBlock && !linkedBlock.completed) {
+          calendarContext.updateTaskBlock(linkedBlock.id, { completed: true });
+        }
+      }
+    },
+    [habits, habitCompletions, persistHabitsData, calendarContext]
+  );
 
   // Toggle Habit Complete
   const toggleHabitComplete = useCallback(
@@ -501,11 +595,22 @@ export function HabitsProvider({
   // Delete Routine
   const deleteRoutine = useCallback(
     (id: string) => {
+      deskContext?.registerDeletedId?.("routine", id);
       persistHabitsData({
         routines: routines.filter((r) => r.id !== id),
       });
     },
-    [routines, persistHabitsData]
+    [routines, persistHabitsData, deskContext]
+  );
+
+  // Archive / Unarchive Routine
+  const archiveRoutine = useCallback(
+    (id: string) => updateRoutine(id, { isArchived: true }),
+    [updateRoutine]
+  );
+  const unarchiveRoutine = useCallback(
+    (id: string) => updateRoutine(id, { isArchived: false }),
+    [updateRoutine]
   );
 
   // Start Routine Session
@@ -554,7 +659,8 @@ export function HabitsProvider({
       stepIndex: number,
       completed: boolean,
       skipped = false,
-      durationSeconds = 0
+      durationSeconds = 0,
+      targetStepIndex?: number
     ) => {
       const session = routineSessions.find((s) => s.id === sessionId);
       if (!session) return;
@@ -569,14 +675,22 @@ export function HabitsProvider({
         };
       }
 
-      // If step links to a habit and was completed, automatically record habit completion
+      // If step links to a habit and was completed, idempotently record habit completion
+      // MUST NEVER toggle an already completed habit back to incomplete!
       const routine = routines.find((r) => r.id === session.routineId);
       const targetHabitId = routine?.steps[stepIndex]?.targetHabitId;
       if (completed && targetHabitId) {
-        toggleHabitComplete(targetHabitId, session.date);
+        markHabitComplete(targetHabitId, session.date);
       }
 
-      const nextCurrentIndex = Math.min(stepIndex + 1, nextSteps.length - 1);
+      let nextCurrentIndex = session.currentStepIndex;
+      if (typeof targetStepIndex === "number") {
+        nextCurrentIndex = Math.max(0, Math.min(targetStepIndex, nextSteps.length - 1));
+      } else if (completed || skipped) {
+        nextCurrentIndex = Math.min(stepIndex + 1, nextSteps.length - 1);
+      } else {
+        nextCurrentIndex = stepIndex;
+      }
 
       const updated = routineSessions.map((s) =>
         s.id === sessionId
@@ -590,7 +704,7 @@ export function HabitsProvider({
 
       persistHabitsData({ routineSessions: updated });
     },
-    [routineSessions, routines, toggleHabitComplete, persistHabitsData]
+    [routineSessions, routines, markHabitComplete, persistHabitsData]
   );
 
   // Complete Routine Session
@@ -727,6 +841,7 @@ export function HabitsProvider({
       habitProgressLogs,
       routines,
       activeRoutines,
+      archivedRoutines,
       routineSessions,
       activeRoutineSession,
       createHabit,
@@ -736,6 +851,7 @@ export function HabitsProvider({
       unarchiveHabit,
       pauseHabit,
       resumeHabit,
+      markHabitComplete,
       toggleHabitComplete,
       undoHabitComplete,
       skipHabitOccurrence,
@@ -743,6 +859,8 @@ export function HabitsProvider({
       createRoutine,
       updateRoutine,
       deleteRoutine,
+      archiveRoutine,
+      unarchiveRoutine,
       startRoutineSession,
       updateRoutineSessionStep,
       completeRoutineSession,
@@ -758,6 +876,7 @@ export function HabitsProvider({
       habitProgressLogs,
       routines,
       activeRoutines,
+      archivedRoutines,
       routineSessions,
       activeRoutineSession,
       createHabit,
@@ -767,6 +886,7 @@ export function HabitsProvider({
       unarchiveHabit,
       pauseHabit,
       resumeHabit,
+      markHabitComplete,
       toggleHabitComplete,
       undoHabitComplete,
       skipHabitOccurrence,
@@ -774,6 +894,8 @@ export function HabitsProvider({
       createRoutine,
       updateRoutine,
       deleteRoutine,
+      archiveRoutine,
+      unarchiveRoutine,
       startRoutineSession,
       updateRoutineSessionStep,
       completeRoutineSession,
