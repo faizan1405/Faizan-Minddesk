@@ -48,32 +48,28 @@ function renderHabitsWorkspace(options?: {
   );
 }
 
-describe("Habit & Routine Tracker Experience (Phase 7 - Part A & B)", () => {
+describe("Habit & Routine Tracker Experience (Phase 1-8 UX & Reliability)", () => {
   beforeEach(() => {
     window.localStorage.clear();
   });
 
-  it("renders HabitsWorkspace with header, stats, and primary tabs", () => {
+  it("renders HabitsWorkspace with contextual headers and primary tabs", () => {
     renderHabitsWorkspace();
 
-    // Verify main header
-    expect(screen.getByText("Habit & Routine Tracker")).toBeInTheDocument();
-    expect(screen.getByText(/Build sustainable daily momentum/i)).toBeInTheDocument();
-
-    // Verify primary buttons
-    expect(screen.getByRole("button", { name: /New Habit/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Daily Review$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Export Data/i })).toBeInTheDocument();
-
-    // Verify top metrics shelf
-    expect(screen.getByText(/Active Streaks In Play/i)).toBeInTheDocument();
-    expect(screen.getByText(/Progress today:/i)).toBeInTheDocument();
-
-    // Verify view tabs
+    // Verify view navigation tabs
     expect(screen.getByRole("button", { name: /Today's Habits/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /All Habits/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Routines/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Heatmap & Trends/i })).toBeInTheDocument();
+
+    // Verify contextual Today's Habits heading & buttons (oversized duplicate header removed)
+    expect(screen.getByRole("heading", { name: "Today's Habits" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /New Habit/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Daily Review$/i })).toBeInTheDocument();
+
+    // Verify top metrics shelf
+    expect(screen.getByText(/Active Streaks In Play/i)).toBeInTheDocument();
+    expect(screen.getByText(/Progress today:/i)).toBeInTheDocument();
   });
 
   it("displays seeded habits with correct tracking types and streaks", () => {
@@ -101,15 +97,11 @@ describe("Habit & Routine Tracker Experience (Phase 7 - Part A & B)", () => {
       expect(screen.getByText("Create New Habit")).toBeInTheDocument();
     });
 
-    // Fill habit name
-    const nameInput = screen.getByPlaceholderText(/e\.g\. Read 20 minutes, Drink water, Practice sales\.\.\./i);
+    // Fill habit name in streamlined modal
+    const nameInput = screen.getByLabelText(/Habit Name/i);
     fireEvent.change(nameInput, { target: { value: "Practice Sales Pitch" } });
 
-    // Fill description
-    const descInput = screen.getByPlaceholderText(/Why does this habit matter to your daily routine\?/i);
-    fireEvent.change(descInput, { target: { value: "Rehearse enterprise demo pitch for 20 minutes" } });
-
-    // Submit form
+    // Submit form via sticky action footer
     const createBtn = screen.getByRole("button", { name: /Create Habit/i });
     fireEvent.click(createBtn);
 
@@ -150,8 +142,9 @@ describe("Habit & Routine Tracker Experience (Phase 7 - Part A & B)", () => {
     const routinesTab = screen.getByRole("button", { name: /Routines/i });
     fireEvent.click(routinesTab);
 
-    // Verify seed routines appear
+    // Verify contextual heading and seed routines appear
     await waitFor(() => {
+      expect(screen.getByText("My Routines")).toBeInTheDocument();
       expect(screen.getByText("Morning Focus Kickstart")).toBeInTheDocument();
     });
     expect(screen.getByText("Evening Wind-Down & Closure")).toBeInTheDocument();
@@ -214,6 +207,60 @@ describe("Habit & Routine Tracker Experience (Phase 7 - Part A & B)", () => {
     });
   });
 
+  it("idempotently marks linked habit as complete when completing a routine step without reversing", async () => {
+    renderHabitsWorkspace();
+
+    // 1. Manually complete Exercise & Movement first on Today's Habits
+    const toggleBtn = screen.getByRole("button", { name: /Mark Exercise & Movement complete/i });
+    fireEvent.click(toggleBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Mark Exercise & Movement incomplete/i })).toBeInTheDocument();
+    });
+
+    // 2. Switch to Routines tab
+    const routinesTab = screen.getByRole("button", { name: /Routines/i });
+    fireEvent.click(routinesTab);
+
+    await waitFor(() => {
+      expect(screen.getByText("Morning Focus Kickstart")).toBeInTheDocument();
+    });
+
+    // Start routine
+    const startBtns = screen.getAllByRole("button", { name: /Start Routine/i });
+    fireEvent.click(startBtns[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    const modal = screen.getByRole("dialog");
+
+    // Advance through Step 1 to reach Step 2 (which is linked to habit-workout)
+    const completeStep1 = within(modal).getByRole("button", { name: /Complete Step/i });
+    fireEvent.click(completeStep1);
+
+    await waitFor(() => {
+      expect(within(modal).getByText("10-Minute Morning Stretch & Mobility")).toBeInTheDocument();
+    });
+
+    // Complete Step 2 (linked to Exercise & Movement)
+    const completeStep2 = within(modal).getByRole("button", { name: /Complete Step/i });
+    fireEvent.click(completeStep2);
+
+    // Close / Save routine
+    const saveBtn = within(modal).getByRole("button", { name: /Save & Exit/i });
+    fireEvent.click(saveBtn);
+
+    // 3. Switch back to Today's Habits
+    const todayTab = screen.getByRole("button", { name: /Today's Habits/i });
+    fireEvent.click(todayTab);
+
+    // Exercise & Movement MUST STILL BE COMPLETED (never reversed to incomplete!)
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Mark Exercise & Movement incomplete/i })).toBeInTheDocument();
+    });
+  });
+
   it("opens Daily Habit Summary modal for end-of-day reflection", async () => {
     renderHabitsWorkspace();
 
@@ -246,10 +293,11 @@ describe("Habit & Routine Tracker Experience (Phase 7 - Part A & B)", () => {
     const heatmapTab = screen.getByRole("button", { name: /Heatmap & Trends/i });
     fireEvent.click(heatmapTab);
 
-    // Verify heatmap elements
+    // Verify heatmap elements and tab actions
     await waitFor(() => {
       expect(screen.getByText(/Habit Activity Heatmap/i)).toBeInTheDocument();
     });
+    expect(screen.getByRole("button", { name: /Export Data/i })).toBeInTheDocument();
     expect(screen.getByText(/90-Day Consistency/i)).toBeInTheDocument();
     expect(screen.getByText(/Weekly Momentum/i)).toBeInTheDocument();
     expect(screen.getByText(/Total Check-ins/i)).toBeInTheDocument();

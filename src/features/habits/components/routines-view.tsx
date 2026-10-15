@@ -10,6 +10,10 @@ import {
   MoreVertical,
   Edit,
   Trash2,
+  Archive,
+  ArchiveRestore,
+  AlertTriangle,
+  Layers,
 } from "lucide-react";
 import type { Routine } from "../types";
 import { useHabits } from "../context/habits-context";
@@ -20,12 +24,23 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
 export function RoutinesView() {
-  const { activeRoutines, routineSessions, deleteRoutine, startRoutineSession } = useHabits();
+  const {
+    activeRoutines,
+    archivedRoutines,
+    routineSessions,
+    deleteRoutine,
+    archiveRoutine,
+    unarchiveRoutine,
+    startRoutineSession,
+  } = useHabits();
+
+  const [filterTab, setFilterTab] = useState<"active" | "archived">("active");
 
   const [routineModalOpen, setRoutineModalOpen] = useState(false);
   const [routineToEdit, setRoutineToEdit] = useState<Routine | null>(null);
@@ -35,6 +50,9 @@ export function RoutinesView() {
 
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [routineToSchedule, setRoutineToSchedule] = useState<Routine | null>(null);
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [routineToDelete, setRoutineToDelete] = useState<Routine | null>(null);
 
   const handleStartRoutine = (routine: Routine) => {
     const inProgress = routineSessions.find(
@@ -57,11 +75,18 @@ export function RoutinesView() {
     setRoutineModalOpen(true);
   };
 
+  const handleDeletePrompt = (routine: Routine) => {
+    setRoutineToDelete(routine);
+    setDeleteDialogOpen(true);
+  };
+
   // Find if there is an active in-progress session
   const inProgressSession = routineSessions.find((s) => s.status === "in_progress");
   const inProgressRoutine = inProgressSession
     ? activeRoutines.find((r) => r.id === inProgressSession.routineId)
     : null;
+
+  const displayedRoutines = filterTab === "active" ? activeRoutines : archivedRoutines;
 
   return (
     <div className="space-y-6">
@@ -102,155 +127,248 @@ export function RoutinesView() {
         </div>
       )}
 
-      {/* Routines Grid Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      {/* Contextual Tab Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border pb-4">
         <div>
-          <h2 className="text-base font-bold text-foreground">Personal Routines</h2>
+          <h2 className="text-lg font-bold text-foreground">My Routines</h2>
           <p className="text-xs text-muted-foreground">
             Execute recurring daily routines step-by-step with guided countdowns.
           </p>
         </div>
 
-        <Button
-          size="sm"
-          onClick={() => {
-            setRoutineToEdit(null);
-            setRoutineModalOpen(true);
-          }}
-          className="rounded-xl bg-primary text-primary-foreground font-semibold text-xs cursor-pointer"
-        >
-          <Plus size={14} className="mr-1.5" /> New Routine
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* Segmented Filter Pills */}
+          <div className="flex items-center rounded-xl bg-muted/60 p-1 border border-border text-xs">
+            <button
+              type="button"
+              onClick={() => setFilterTab("active")}
+              className={`rounded-lg px-3 py-1 font-semibold transition-all cursor-pointer ${
+                filterTab === "active"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Active ({activeRoutines.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterTab("archived")}
+              className={`rounded-lg px-3 py-1 font-semibold transition-all cursor-pointer ${
+                filterTab === "archived"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Archived ({archivedRoutines.length})
+            </button>
+          </div>
+
+          <Button
+            size="sm"
+            onClick={() => {
+              setRoutineToEdit(null);
+              setRoutineModalOpen(true);
+            }}
+            className="rounded-xl bg-primary text-primary-foreground font-semibold text-xs cursor-pointer shadow-xs"
+          >
+            <Plus size={14} className="mr-1.5" /> New Routine
+          </Button>
+        </div>
       </div>
 
-      {/* Routine Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {activeRoutines.map((routine) => {
-          const totalMins = routine.steps.reduce((sum, s) => sum + (s.durationMinutes || 0), 0);
-          const sessionsForRoutine = routineSessions.filter((s) => s.routineId === routine.id);
-          const completedSessions = sessionsForRoutine.filter((s) => s.status === "completed").length;
+      {/* Routines Grid or Empty State */}
+      {displayedRoutines.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {displayedRoutines.map((routine) => {
+            const totalMins = routine.steps.reduce((sum, s) => sum + (s.durationMinutes || 0), 0);
+            const sessionsForRoutine = routineSessions.filter((s) => s.routineId === routine.id);
+            const completedSessions = sessionsForRoutine.filter((s) => s.status === "completed").length;
 
-          return (
-            <div
-              key={routine.id}
-              className="flex flex-col justify-between rounded-2xl border border-border bg-card p-5 hover:border-border/80 hover:shadow-xs transition-all"
-            >
-              <div>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <span
-                      className="flex size-11 items-center justify-center rounded-xl text-xl shadow-xs"
-                      style={{
-                        backgroundColor: `${routine.color}15`,
-                        border: `1px solid ${routine.color}35`,
-                      }}
-                    >
-                      {routine.emoji}
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground">{routine.title}</h3>
-                      {routine.description && (
-                        <p className="line-clamp-1 text-xs text-muted-foreground mt-0.5">
-                          {routine.description}
-                        </p>
-                      )}
-                      <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
-                        <span className="inline-flex items-center gap-1 font-semibold text-foreground">
-                          <Clock size={11} /> {totalMins} mins
-                        </span>
-                        <span>•</span>
-                        <span>{routine.steps.length} steps</span>
-                        {routine.schedule && (
-                          <>
-                            <span>•</span>
-                            <span className="capitalize">{routine.schedule.frequency} at {routine.schedule.preferredTime}</span>
-                          </>
+            return (
+              <div
+                key={routine.id}
+                className={`flex flex-col justify-between rounded-2xl border bg-card p-5 transition-all ${
+                  routine.isArchived
+                    ? "border-dashed border-border/80 opacity-75"
+                    : "border-border hover:border-border/80 hover:shadow-xs"
+                }`}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <span
+                        className="flex size-11 items-center justify-center rounded-xl text-xl shadow-xs"
+                        style={{
+                          backgroundColor: `${routine.color}15`,
+                          border: `1px solid ${routine.color}35`,
+                        }}
+                      >
+                        {routine.emoji}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-foreground">{routine.title}</h3>
+                          {routine.isArchived && (
+                            <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
+                              Archived
+                            </span>
+                          )}
+                        </div>
+                        {routine.description && (
+                          <p className="line-clamp-1 text-xs text-muted-foreground mt-0.5">
+                            {routine.description}
+                          </p>
                         )}
+                        <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <span className="inline-flex items-center gap-1 font-semibold text-foreground">
+                            <Clock size={11} /> {totalMins} mins
+                          </span>
+                          <span>•</span>
+                          <span>{routine.steps.length} steps</span>
+                          {routine.schedule && (
+                            <>
+                              <span>•</span>
+                              <span className="capitalize">
+                                {routine.schedule.frequency} at {routine.schedule.preferredTime}
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="size-8 rounded-lg text-muted-foreground hover:text-foreground flex items-center justify-center cursor-pointer"
+                          aria-label="Routine options"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44 text-xs">
+                        <DropdownMenuItem onClick={() => handleEditRoutine(routine)}>
+                          <Edit className="mr-2 size-3.5" /> Edit Routine
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleScheduleRoutine(routine)}>
+                          <Calendar className="mr-2 size-3.5" /> Schedule in Calendar
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {routine.isArchived ? (
+                          <DropdownMenuItem onClick={() => unarchiveRoutine(routine.id)}>
+                            <ArchiveRestore className="mr-2 size-3.5" /> Restore Routine
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={() => archiveRoutine(routine.id)}>
+                            <Archive className="mr-2 size-3.5" /> Archive Routine
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => handleDeletePrompt(routine)}
+                        >
+                          <Trash2 className="mr-2 size-3.5" /> Delete Routine
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className="size-8 rounded-lg text-muted-foreground hover:text-foreground flex items-center justify-center"
-                      >
-                        <MoreVertical size={16} />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44 text-xs">
-                      <DropdownMenuItem onClick={() => handleEditRoutine(routine)}>
-                        <Edit className="mr-2 size-3.5" /> Edit Routine
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleScheduleRoutine(routine)}>
-                        <Calendar className="mr-2 size-3.5" /> Schedule in Calendar
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => deleteRoutine(routine.id)}
-                      >
-                        <Trash2 className="mr-2 size-3.5" /> Delete Routine
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-
-                {/* Steps List Preview */}
-                <div className="mt-4 space-y-1.5 border-t border-border/50 pt-3">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Sequence Steps
-                  </span>
-                  <div className="space-y-1">
-                    {routine.steps.map((step, idx) => (
-                      <div
-                        key={step.id}
-                        className="flex items-center justify-between rounded-lg bg-muted/30 px-2.5 py-1.5 text-xs"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="size-4 rounded-full bg-muted text-[10px] font-bold text-muted-foreground flex items-center justify-center">
-                            {idx + 1}
+                  {/* Steps List Preview */}
+                  <div className="mt-4 space-y-1.5 border-t border-border/50 pt-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Sequence Steps
+                    </span>
+                    <div className="space-y-1">
+                      {routine.steps.map((step, idx) => (
+                        <div
+                          key={step.id}
+                          className="flex items-center justify-between rounded-lg bg-muted/30 px-2.5 py-1.5 text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="size-4 rounded-full bg-muted text-[10px] font-bold text-muted-foreground flex items-center justify-center">
+                              {idx + 1}
+                            </span>
+                            <span className="truncate text-foreground font-medium">{step.title}</span>
+                          </div>
+                          <span className="text-[11px] text-muted-foreground shrink-0 ml-2">
+                            {step.durationMinutes}m
                           </span>
-                          <span className="truncate text-foreground font-medium">{step.title}</span>
                         </div>
-                        <span className="text-[11px] text-muted-foreground shrink-0 ml-2">
-                          {step.durationMinutes}m
-                        </span>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card Footer: Action Buttons */}
+                <div className="mt-5 flex items-center justify-between border-t border-border/40 pt-3 text-xs">
+                  <span className="text-[11px] text-muted-foreground font-medium">
+                    {completedSessions} {completedSessions === 1 ? "session" : "sessions"} finished
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    {routine.isArchived ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => unarchiveRoutine(routine.id)}
+                        className="rounded-xl text-xs font-semibold cursor-pointer"
+                      >
+                        <ArchiveRestore size={13} className="mr-1" /> Restore
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleScheduleRoutine(routine)}
+                          className="rounded-xl text-xs font-semibold cursor-pointer"
+                        >
+                          <Calendar size={13} className="mr-1" /> Schedule
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          onClick={() => handleStartRoutine(routine)}
+                          className="rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow-xs hover:bg-primary/90 cursor-pointer"
+                        >
+                          <Play size={13} className="mr-1 fill-current" /> Start Routine
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
-
-              {/* Card Footer: Action Buttons */}
-              <div className="mt-5 flex items-center justify-between border-t border-border/40 pt-3 text-xs">
-                <span className="text-[11px] text-muted-foreground font-medium">
-                  {completedSessions} {completedSessions === 1 ? "session" : "sessions"} finished
-                </span>
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleScheduleRoutine(routine)}
-                    className="rounded-xl text-xs font-semibold"
-                  >
-                    <Calendar size={13} className="mr-1" /> Schedule
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    onClick={() => handleStartRoutine(routine)}
-                    className="rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow-xs hover:bg-primary/90"
-                  >
-                    <Play size={13} className="mr-1 fill-current" /> Start Routine
-                  </Button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-12 px-4 text-center">
+          <div className="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground mb-3">
+            <Layers size={22} />
+          </div>
+          <h3 className="text-sm font-bold text-foreground">
+            {filterTab === "active" ? "No Active Routines" : "No Archived Routines"}
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground max-w-sm">
+            {filterTab === "active"
+              ? "Group recurring habits and sequences into step-by-step routines with guided countdowns."
+              : "Routines you archive to preserve session history will be stored here."}
+          </p>
+          {filterTab === "active" && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setRoutineToEdit(null);
+                setRoutineModalOpen(true);
+              }}
+              className="mt-4 rounded-xl text-xs font-semibold"
+            >
+              <Plus size={14} className="mr-1" /> Create First Routine
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Routine Modals */}
       <RoutineModal
@@ -270,6 +388,74 @@ export function RoutinesView() {
         routine={routineToSchedule}
         onClose={() => setScheduleDialogOpen(false)}
       />
+
+      {/* Deletion Confirmation Modal */}
+      {deleteDialogOpen && routineToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div
+            className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-start gap-3">
+              <span className="flex size-10 items-center justify-center rounded-xl bg-destructive/15 text-destructive">
+                <AlertTriangle size={20} />
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">
+                  Delete &quot;{routineToDelete.title}&quot;?
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Permanent deletion cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Deleting this routine permanently removes the routine definition and all associated session history.
+              If you want to keep your historical logs and stats, consider <strong>archiving</strong> instead.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-border">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteDialogOpen(false)}
+                className="w-full sm:w-auto rounded-xl text-xs cursor-pointer"
+              >
+                Cancel
+              </Button>
+              {!routineToDelete.isArchived && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    archiveRoutine(routineToDelete.id);
+                    setDeleteDialogOpen(false);
+                  }}
+                  className="w-full sm:w-auto rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Archive Instead
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  deleteRoutine(routineToDelete.id);
+                  setDeleteDialogOpen(false);
+                }}
+                className="w-full sm:w-auto rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Delete Permanently
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
